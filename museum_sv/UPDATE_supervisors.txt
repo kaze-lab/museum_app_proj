@@ -1,0 +1,4 @@
+UPDATE supervisors 
+SET is_first_login = 1, 
+    password = '$2y$10$gT5qjyPwPGWarfD4U/dQpuHLnJ2shUVqzwjCBxLxp5hPZFTrvqdLG' 
+WHERE email = 'museum@41mono.net';
