@@ -1,0 +1,9 @@
+-- スーパーバイザー（SV）管理テーブル
+CREATE TABLE IF NOT EXISTS supervisors (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL, -- ハッシュ化して保存
+    auth_code VARCHAR(5) DEFAULT NULL, -- 認証コード（5桁）
+    auth_expiry DATETIME DEFAULT NULL -- 認証コードの有効期限
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

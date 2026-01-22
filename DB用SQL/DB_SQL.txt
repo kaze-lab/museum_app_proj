@@ -1,0 +1,35 @@
+-- 1. 博物館テーブル（仕様書6〜7ページ対応）
+-- 博物館ごとの基本情報と、その館の代表パスワードを保存します
+CREATE TABLE museums (
+    m_code VARCHAR(4) NOT NULL,      -- 博物館コード (0001, 0002...)
+    name_ja VARCHAR(100) NOT NULL,   -- 博物館名
+    password VARCHAR(255) NOT NULL,  -- 博物館ログイン用パスワード
+    PRIMARY KEY (m_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 2. 管理者テーブル（仕様書7〜12ページ対応）
+-- 1つの博物館に複数の管理者を登録できるようにします
+CREATE TABLE admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    m_code VARCHAR(4) NOT NULL,      -- 所属する博物館コード
+    admin_name VARCHAR(50) NOT NULL, -- 管理者の氏名
+    email VARCHAR(100) NOT NULL,     -- メールアドレス
+    password VARCHAR(255) NOT NULL,  -- 個別のログインパスワード
+    FOREIGN KEY (m_code) REFERENCES museums(m_code) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3. 展示物テーブル（仕様書14〜23ページ対応）
+-- 展示物の詳細（多言語テキスト、画像パス）を保存します
+CREATE TABLE exhibits (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    m_code VARCHAR(4) NOT NULL,      -- 博物館コード
+    e_code VARCHAR(4) NOT NULL,      -- 展示物コード (0001, 0002...)
+    title_ja VARCHAR(200),           -- 展示物名（日）
+    title_en VARCHAR(200),           -- 展示物名（英）
+    title_zh VARCHAR(200),           -- 展示物名（中）
+    desc_ja TEXT,                    -- 説明文（日）
+    desc_en TEXT,                    -- 説明文（英）
+    desc_zh TEXT,                    -- 説明文（中）
+    image_path VARCHAR(255),         -- 画像ファイル名
+    FOREIGN KEY (m_code) REFERENCES museums(m_code) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
