@@ -1,100 +1,124 @@
 <?php
-/**
- * スーパーバイザー管理画面 - 全体表示 (index.php)
- * 仕様書 6ページ対応
- */
-
-// 1. データベース接続設定ファイルを読み込みます
-// パスは museum/common/db_inc.php を指しています
 require_once('../common/db_inc.php');
+require_once('_header.php'); // ヘッダーを読み込み、ログインチェックも実行
 
-try {
-    // 2. 登録されている全ての博物館を「博物館コード」順に取得します
-    $sql = "SELECT * FROM museums ORDER BY m_code ASC";
-    $stmt = $pdo->query($sql);
-    $museums = $stmt->fetchAll();
-} catch (PDOException $e) {
-    die("データ取得エラー: " . $e->getMessage());
+$error_msg = "";
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+	$m_code = $_POST['m_code'];
+	$name_ja = $_POST['name_ja'];
+	$password = $_POST['password'];
+
+	// --- バリデーション ---
+	// 1. 必須項目の空チェック
+	if (empty($m_code) || empty($name_ja) || empty($password)) {
+		$error_msg = "すべての項目を入力してください。";
+	}
+	// 2. 博物館コードのフォーマットチェック（半角英数字とアンダースコアのみ）
+	elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $m_code)) {
+		$error_msg = "博物館コードは半角英数字とアンダースコア(_)のみ使用できます。";
+	}
+	// 3. 博物館コードの重複チェック
+	else {
+		$stmt = $pdo->prepare("SELECT COUNT(*) FROM museums WHERE m_code = ?");
+		$stmt->execute([$m_code]);
+		if ($stmt->fetchColumn() > 0) {
+			$error_msg = "その博物館コードは既に使用されています。";
+		}
+	}
+
+	// エラーがなければデータベースに登録
+	if (empty($error_msg)) {
+		try {
+			// ★ パスワードは必ずハッシュ化して保存する
+			$hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
+			$sql = "INSERT INTO museums (m_code, name_ja, password) VALUES (?, ?, ?)";
+			$stmt = $pdo->prepare($sql);
+			$stmt->execute([$m_code, $name_ja, $hashed_password]);
+
+			// 成功したら一覧ページにリダイレクト
+			header("Location: index.php?msg=added");
+			exit;
+
+		} catch (PDOException $e) {
+			$error_msg = "データベースへの登録に失敗しました。";
+		}
+	}
 }
 ?>
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>スーパーバイザー管理画面 - 全体表示</title>
-    <style>
-        /* 仕様書に近いシンプルなデザインに整えます */
-        body { font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; padding: 20px; color: #333; }
-        h1 { font-size: 1.2em; border-bottom: 2px solid #004080; padding-bottom: 10px; }
-        h2 { font-size: 1.0em; margin-top: 20px; }
+<title>新しい博物館の登録 - 博物館ガイド</title>
+<style>
+	.card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+	.card-header { padding-bottom: 20px; margin-bottom: 25px; border-bottom: 1px solid var(--border-color); }
+	.card-header h2 { margin: 0; font-size: 1.5em; }
+	.form-group { margin-bottom: 20px; position: relative; }
+	label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 0.9em; }
+	input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+	.info-text { font-size: 0.8em; color: #888; margin-top: 5px; }
+	.btn-group { display: flex; gap: 10px; margin-top: 30px; }
+	.btn { text-decoration: none; padding: 12px 25px; border-radius: 25px; font-weight: bold; font-size: 14px; border: 1px solid; cursor: pointer; text-align: center; }
+	.btn-primary { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+	.btn-outline { background: white; color: #555; border-color: #ddd; }
+	.alert { background: #fff3f3; color: #d00; padding: 12px; border-radius: 10px; margin-bottom: 20px; }
+	.toggle-password { position: absolute; right: 15px; top: 40px; cursor: pointer; color: #888; }
+</style>
 
-        /* テーブルのスタイル */
-        table { border-collapse: collapse; width: 100%; max-width: 600px; margin-top: 10px; }
-        th { background-color: #004080; color: white; padding: 10px; text-align: left; border: 1px solid #ccc; }
-        td { padding: 10px; border: 1px solid #ccc; }
-        tr:nth-child(even) { background-color: #f9f9f9; } /* 1行おきに色を変えて見やすくします */
+<div class="container">
+	<div class="card">
+		<div class="card-header">
+			<h2>新しい博物館の登録</h2>
+		</div>
 
-        /* ボタンのスタイル */
-        .btn-group { margin-top: 30px; display: flex; gap: 10px; }
-        .btn { 
-            padding: 10px 20px; 
-            border: 1px solid #333; 
-            background-color: #fff; 
-            cursor: pointer; 
-            text-decoration: none; 
-            color: #333;
-            font-size: 0.9em;
-        }
-        .btn:hover { background-color: #eee; }
-        
-        .info-text { margin-top: 15px; font-size: 0.9em; color: #666; }
-    </style>
-</head>
-<body>
+		<?php if ($error_msg): ?>
+			<div class="alert"><?= htmlspecialchars($error_msg) ?></div>
+		<?php endif; ?>
 
-    <h1>スーパーバイザー管理画面（PCで行うことを想定）</h1>
-    
-    <h2>全体表示</h2>
-    <p class="info-text">● 全体表示では登録済みの全博物館の一覧が表示される</p>
+		<form method="POST">
+			<div class="form-group">
+				<label for="name_ja">博物館名</label>
+				<input type="text" id="name_ja" name="name_ja" value="<?= htmlspecialchars($_POST['name_ja'] ?? '') ?>" required>
+			</div>
 
-    <!-- 博物館一覧テーブル -->
-    <table>
-        <thead>
-            <tr>
-                <th>博物館名</th>
-                <th>博物館コード</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (empty($museums)): ?>
-                <!-- データが1件もない場合の表示 -->
-                <tr>
-                    <td colspan="2" style="text-align: center; padding: 20px;">登録済みの博物館はありません。</td>
-                </tr>
-            <?php else: ?>
-                <!-- 取得したデータを1行ずつループして表示します -->
-                <?php foreach ($museums as $m): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($m['name_ja'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    <td><?php echo htmlspecialchars($m['m_code'], ENT_QUOTES, 'UTF-8'); ?></td>
-                </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
+			<div class="form-group">
+				<label for="m_code">博物館コード</label>
+				<input type="text" id="m_code" name="m_code" value="<?= htmlspecialchars($_POST['m_code'] ?? '') ?>" required>
+				<p class="info-text">管理者がログインIDとして使用します。半角英数字とアンダースコア(_)のみ使用可能です。</p>
+			</div>
+			
+			<div class="form-group">
+				<label for="password">管理者用の初期パスワード</label>
+				<input type="password" id="password" name="password" required>
+				 <span class="toggle-password" onclick="togglePassword()">
+					<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>
+						<line id="eye-slash" x1="1" y1="1" x2="23" y2="23"></line>
+					</svg>
+				</span>
+				<p class="info-text">このパスワードを博物館の管理者に伝えてください。</p>
+			</div>
 
-    <!-- 操作ボタンエリア（仕様書 6ページ下部） -->
-    <div class="btn-group">
-        <!-- 新規登録ボタン：add.phpへ移動 -->
-        <a href="add.php" class="btn">新規登録</a>
-        
-        <!-- 削除ボタン：delete_select.phpへ移動（後ほど作成） -->
-        <a href="delete_select.php" class="btn">削除</a>
-        
-        <!-- 修正ボタン：edit_select.phpへ移動（後ほど作成） -->
-        <a href="edit_select.php" class="btn">修正</a>
-    </div>
+			<div class="btn-group">
+				<a href="index.php" class="btn btn-outline">キャンセル</a>
+				<button type="submit" class="btn btn-primary">登録する</button>
+			</div>
+		</form>
+	</div>
+</div>
+
+<script>
+function togglePassword() {
+	const passInput = document.getElementById('password');
+	const eyeSlash = document.getElementById('eye-slash');
+	if (passInput.type === 'password') {
+		passInput.type = 'text';
+		eyeSlash.style.display = 'none';
+	} else {
+		passInput.type = 'password';
+		eyeSlash.style.display = 'block';
+	}
+}
+</script>
 
 </body>
 </html>
