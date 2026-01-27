@@ -1,124 +1,209 @@
 <?php
 require_once('../common/db_inc.php');
-require_once('_header.php'); // ヘッダーを読み込み、ログインチェックも実行
+require_once('_header.php');
 
-$error_msg = "";
+// --- 1. パラメータの取得 ---
+$keyword	 = $_GET['keyword'] ?? '';
+$category_id = $_GET['category_id'] ?? '';
+$is_active	 = $_GET['is_active'] ?? '';
+$sort		 = $_GET['sort'] ?? 'kana_asc'; // デフォルトはかな昇順
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-	$m_code = $_POST['m_code'];
-	$name_ja = $_POST['name_ja'];
-	$password = $_POST['password'];
+// --- 2. カテゴリ一覧の取得 (検索用ドロップダウン) ---
+$cat_stmt = $pdo->query("SELECT * FROM categories ORDER BY id");
+$categories = $cat_stmt->fetchAll();
 
-	// --- バリデーション ---
-	// 1. 必須項目の空チェック
-	if (empty($m_code) || empty($name_ja) || empty($password)) {
-		$error_msg = "すべての項目を入力してください。";
-	}
-	// 2. 博物館コードのフォーマットチェック（半角英数字とアンダースコアのみ）
-	elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $m_code)) {
-		$error_msg = "博物館コードは半角英数字とアンダースコア(_)のみ使用できます。";
-	}
-	// 3. 博物館コードの重複チェック
-	else {
-		$stmt = $pdo->prepare("SELECT COUNT(*) FROM museums WHERE m_code = ?");
-		$stmt->execute([$m_code]);
-		if ($stmt->fetchColumn() > 0) {
-			$error_msg = "その博物館コードは既に使用されています。";
-		}
-	}
+// --- 3. SQLの組み立て (検索・抽出ロジック) ---
+$sql = "
+	SELECT 
+		m.id, 
+		m.name_ja, 
+		m.name_kana, 
+		c.name AS category_name, 
+		m.is_active 
+	FROM 
+		museums m
+	JOIN 
+		categories c ON m.category_id = c.id
+	WHERE 1=1
+";
 
-	// エラーがなければデータベースに登録
-	if (empty($error_msg)) {
-		try {
-			// ★ パスワードは必ずハッシュ化して保存する
-			$hashed_password = password_hash($password, PASSWORD_DEFAULT);
+$params = [];
 
-			$sql = "INSERT INTO museums (m_code, name_ja, password) VALUES (?, ?, ?)";
-			$stmt = $pdo->prepare($sql);
-			$stmt->execute([$m_code, $name_ja, $hashed_password]);
-
-			// 成功したら一覧ページにリダイレクト
-			header("Location: index.php?msg=added");
-			exit;
-
-		} catch (PDOException $e) {
-			$error_msg = "データベースへの登録に失敗しました。";
-		}
-	}
+if ($keyword !== '') {
+	$sql .= " AND (m.name_ja LIKE :keyword OR m.name_kana LIKE :keyword)";
+	$params[':keyword'] = '%' . $keyword . '%';
 }
+if ($category_id !== '') {
+	$sql .= " AND m.category_id = :category_id";
+	$params[':category_id'] = $category_id;
+}
+if ($is_active !== '') {
+	$sql .= " AND m.is_active = :is_active";
+	$params[':is_active'] = $is_active;
+}
+
+// ソート順の適用
+if ($sort === 'kana_desc') {
+	$sql .= " ORDER BY m.name_kana DESC";
+} else {
+	$sql .= " ORDER BY m.name_kana ASC";
+}
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$museums = $stmt->fetchAll();
+
+// 次のソート順を決定 (ヘッダークリック用)
+$next_sort = ($sort === 'kana_asc') ? 'kana_desc' : 'kana_asc';
+$sort_icon = ($sort === 'kana_asc') ? '▲' : '▼';
 ?>
-<title>新しい博物館の登録 - 博物館ガイド</title>
+
+<title>博物館の管理 - 博物館ガイド</title>
 <style>
-	.card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-	.card-header { padding-bottom: 20px; margin-bottom: 25px; border-bottom: 1px solid var(--border-color); }
-	.card-header h2 { margin: 0; font-size: 1.5em; }
-	.form-group { margin-bottom: 20px; position: relative; }
-	label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 0.9em; }
-	input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
-	.info-text { font-size: 0.8em; color: #888; margin-top: 5px; }
-	.btn-group { display: flex; gap: 10px; margin-top: 30px; }
-	.btn { text-decoration: none; padding: 12px 25px; border-radius: 25px; font-weight: bold; font-size: 14px; border: 1px solid; cursor: pointer; text-align: center; }
-	.btn-primary { background: var(--primary-color); color: white; border-color: var(--primary-color); }
-	.btn-outline { background: white; color: #555; border-color: #ddd; }
-	.alert { background: #fff3f3; color: #d00; padding: 12px; border-radius: 10px; margin-bottom: 20px; }
-	.toggle-password { position: absolute; right: 15px; top: 40px; cursor: pointer; color: #888; }
+	.card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 20px; }
+	.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
+	.card-header h2 { margin: 0; font-size: 1.4em; }
+
+	/* 検索バーのスタイル */
+	.filter-bar { background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 25px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+	.filter-group { display: flex; flex-direction: column; gap: 5px; }
+	.filter-group label { font-size: 0.8em; font-weight: bold; color: #666; }
+	.filter-bar input, .filter-bar select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9em; }
+	
+	/* テーブルレイアウトの最適化 */
+	.data-table { width: 100%; border-collapse: collapse; table-layout: fixed; } /* 固定レイアウト */
+	.data-table th, .data-table td { padding: 15px; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+	.data-table th { background-color: #fcfcfc; color: #555; font-size: 0.85em; }
+
+	/* 各カラムの幅指定 */
+	.col-id { width: 60px; }
+	.col-name { width: auto; } /* 博物館名は可変 */
+	.col-category { width: 140px; }
+	.col-status { width: 110px; }
+	.col-action { width: 180px; text-align: center !important; } /* 操作ボタンを中央寄せ */
+
+	/* 博物館名とかなの処理 */
+	.name-ja { font-weight: bold; color: #333; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.name-kana { 
+		font-size: 0.75rem; color: #888; 
+		display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; /* 2行制限 */
+		overflow: hidden; line-height: 1.4;
+	}
+
+	/* ソートリンク */
+	.sort-link { text-decoration: none; color: inherit; display: flex; align-items: center; gap: 5px; }
+	.sort-link:hover { color: var(--primary-color); }
+
+	.status-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+	.status-public { background: #e6fff0; color: #1e7e34; }
+	.status-private { background: #fff0f0; color: #d00; }
+
+	.btn { text-decoration: none; padding: 10px 18px; border-radius: 25px; font-weight: bold; font-size: 13px; cursor: pointer; display: inline-block; }
+	.btn-primary { background: var(--primary-color); color: white; border: none; }
+	.btn-search { background: #555; color: white; border: none; padding: 9px 20px; }
+	.btn-outline { background: white; color: #555; border: 1px solid #ddd; font-size: 12px; padding: 6px 14px; }
+	.btn-outline:hover { background: #f8f9fa; }
 </style>
 
 <div class="container">
 	<div class="card">
 		<div class="card-header">
-			<h2>新しい博物館の登録</h2>
+			<h2>登録済み博物館一覧</h2>
+			<a href="museum_add.php" class="btn btn-primary">+ 新しい博物館を登録</a>
 		</div>
 
-		<?php if ($error_msg): ?>
-			<div class="alert"><?= htmlspecialchars($error_msg) ?></div>
-		<?php endif; ?>
-
-		<form method="POST">
-			<div class="form-group">
-				<label for="name_ja">博物館名</label>
-				<input type="text" id="name_ja" name="name_ja" value="<?= htmlspecialchars($_POST['name_ja'] ?? '') ?>" required>
-			</div>
-
-			<div class="form-group">
-				<label for="m_code">博物館コード</label>
-				<input type="text" id="m_code" name="m_code" value="<?= htmlspecialchars($_POST['m_code'] ?? '') ?>" required>
-				<p class="info-text">管理者がログインIDとして使用します。半角英数字とアンダースコア(_)のみ使用可能です。</p>
-			</div>
+		<!-- 検索・抽出バー -->
+		<form method="GET" action="index.php" class="filter-bar">
+			<input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>">
 			
-			<div class="form-group">
-				<label for="password">管理者用の初期パスワード</label>
-				<input type="password" id="password" name="password" required>
-				 <span class="toggle-password" onclick="togglePassword()">
-					<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>
-						<line id="eye-slash" x1="1" y1="1" x2="23" y2="23"></line>
-					</svg>
-				</span>
-				<p class="info-text">このパスワードを博物館の管理者に伝えてください。</p>
+			<div class="filter-group" style="flex-grow: 1;">
+				<label>キーワード（名前・かな）</label>
+				<input type="text" name="keyword" value="<?= htmlspecialchars($keyword) ?>" placeholder="例: 国立科学">
 			</div>
 
-			<div class="btn-group">
-				<a href="index.php" class="btn btn-outline">キャンセル</a>
-				<button type="submit" class="btn btn-primary">登録する</button>
+			<div class="filter-group">
+				<label>カテゴリ</label>
+				<select name="category_id">
+					<option value="">すべて</option>
+					<?php foreach ($categories as $cat): ?>
+						<option value="<?= $cat['id'] ?>" <?= ($category_id == $cat['id']) ? 'selected' : '' ?>>
+							<?= htmlspecialchars($cat['name']) ?>
+						</option>
+					<?php endforeach; ?>
+				</select>
+			</div>
+
+			<div class="filter-group">
+				<label>公開状況</label>
+				<select name="is_active">
+					<option value="">すべて</option>
+					<option value="1" <?= ($is_active === '1') ? 'selected' : '' ?>>公開中</option>
+					<option value="0" <?= ($is_active === '0') ? 'selected' : '' ?>>非公開</option>
+				</select>
+			</div>
+
+			<div class="filter-actions">
+				<button type="submit" class="btn btn-search">検索</button>
+				<a href="index.php" class="btn btn-outline" style="border:none;">リセット</a>
 			</div>
 		</form>
+
+		<?php if (isset($_GET['msg'])): ?>
+			<div style="background:#e6fff0; color:#1e7e34; padding:15px; border-radius:10px; margin-bottom:20px;">
+				<?php
+					if($_GET['msg']==='added') echo "正常に登録されました。";
+					if($_GET['msg']==='updated') echo "情報を更新しました。";
+					if($_GET['msg']==='deleted') echo "削除しました。";
+				?>
+			</div>
+		<?php endif; ?>
+
+		<?php if (count($museums) > 0): ?>
+			<table class="data-table">
+				<thead>
+					<tr>
+						<th class="col-id">ID</th>
+						<th class="col-name">
+							<a href="index.php?sort=<?= $next_sort ?>&keyword=<?= urlencode($keyword) ?>&category_id=<?= $category_id ?>&is_active=<?= $is_active ?>" class="sort-link">
+								博物館名 (かな順) <span style="font-size: 0.7em;"><?= $sort_icon ?></span>
+							</a>
+						</th>
+						<th class="col-category">カテゴリ</th>
+						<th class="col-status">公開状況</th>
+						<th class="col-action">操作</th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ($museums as $m): ?>
+					<tr>
+						<td class="col-id"><?= htmlspecialchars($m['id']) ?></td>
+						<td class="col-name">
+							<div class="name-ja"><?= htmlspecialchars($m['name_ja']) ?></div>
+							<div class="name-kana"><?= htmlspecialchars($m['name_kana']) ?></div>
+						</td>
+						<td class="col-category"><?= htmlspecialchars($m['category_name']) ?></td>
+						<td class="col-status">
+							<?php if ($m['is_active'] == 1): ?>
+								<span class="status-badge status-public">公開中</span>
+							<?php else: ?>
+								<span class="status-badge status-private">非公開</span>
+							<?php endif; ?>
+						</td>
+						<td class="col-action">
+							<a href="museum_edit.php?id=<?= $m['id'] ?>" class="btn btn-outline">編集</a>
+							<a href="museum_delete.php?id=<?= $m['id'] ?>" class="btn btn-outline" onclick="return confirm('本当に削除しますか？')">削除</a>
+						</td>
+					</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php else: ?>
+			<div style="text-align:center; padding:50px; color:#888;">
+				条件に一致する博物館は見つかりませんでした。
+			</div>
+		<?php endif; ?>
 	</div>
 </div>
-
-<script>
-function togglePassword() {
-	const passInput = document.getElementById('password');
-	const eyeSlash = document.getElementById('eye-slash');
-	if (passInput.type === 'password') {
-		passInput.type = 'text';
-		eyeSlash.style.display = 'none';
-	} else {
-		passInput.type = 'password';
-		eyeSlash.style.display = 'block';
-	}
-}
-</script>
 
 </body>
 </html>

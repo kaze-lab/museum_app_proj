@@ -1,10 +1,10 @@
 <?php
-// ���̃w�b�_�[��ǂݍ��ޑS�Ẵy�[�W�ŃZ�b�V�������J�n
+// このヘッダーを読み込む全てのページでセッションを開始
 if (session_status() === PHP_SESSION_NONE) {
 	session_start();
 }
 
-// ���O�C���`�F�b�N
+// ログインチェック
 if (!isset($_SESSION['sv_logged_in'])) {
 	header('Location: login.php');
 	exit;
@@ -50,10 +50,10 @@ if (!isset($_SESSION['sv_logged_in'])) {
 <body>
 
 <header class="header">
-	<div class="header-logo">�����كK�C�h</div>
+	<div class="header-logo">博物館ガイド</div>
 	<nav class="header-nav">
-		<span>����ɂ��́A<?= htmlspecialchars($_SESSION['sv_name']) ?> ����</span>
-		<a href="account.php">�A�J�E���g���</a>
-		<a href="logout.php">���O�A�E�g</a>
+		<span>こんにちは、<?= htmlspecialchars($_SESSION['sv_name']) ?> さん</span>
+		<a href="account.php">アカウント情報</a>
+		<a href="logout.php">ログアウト</a>
 	</nav>
 </header>
