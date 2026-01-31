@@ -1,3 +1,1 @@
-ALTER TABLE `supervisors` 
-ADD `reset_token` VARCHAR(255) NULL DEFAULT NULL AFTER `auth_expiry`,
-ADD `reset_expiry` DATETIME NULL DEFAULT NULL AFTER `reset_token`;
+ALTER TABLE admin_museum_permissions ADD COLUMN role ENUM('admin', 'editor') DEFAULT 'admin' AFTER museum_id;

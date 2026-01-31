@@ -98,6 +98,8 @@ function getSortIcon($base, $current_sort) {
 		<div class="card-header">
 			<h2>登録済み博物館一覧</h2>
 			<div>
+				<!-- システム設定へのリンクを追加 -->
+				<a href="settings.php" class="btn btn-outline" style="border:none; margin-right:10px;">⚙ システム設定</a>
 				<a href="trash.php" class="btn btn-outline" style="border:none; margin-right:10px;">🗑 ゴミ箱を見る</a>
 				<a href="museum_add.php" class="btn btn-primary">+ 新しい博物館を登録</a>
 			</div>
