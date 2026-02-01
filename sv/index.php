@@ -111,6 +111,7 @@ function getSortIcon($base, $current_sort) {
 					if($_GET['msg']==='added') echo "正常に登録されました。";
 					if($_GET['msg']==='updated') echo "情報を更新しました。";
 					if($_GET['msg']==='trashed') echo "博物館をゴミ箱に移動しました。";
+					if($_GET['msg']==='settings_updated') echo "システム設定を更新しました。"; // ←これを追加
 				?>
 			</div>
 		<?php endif; ?>

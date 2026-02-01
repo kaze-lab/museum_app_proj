@@ -226,17 +226,78 @@ function switchTab(lang) {
 	event.currentTarget.classList.add('active');
 	document.getElementById('tab_' + lang).classList.add('active');
 }
-function doTranslate() {
-	const title = document.getElementById('title_ja').value;
-	const desc = document.getElementById('desc_ja').value;
-	if (!title) return;
-	if (confirm('日本語の内容を元に、空いている欄に翻訳を生成しますか？')) {
-		if(!document.getElementById('title_en').value) document.getElementById('title_en').value = title + " [EN]";
-		if(!document.getElementById('title_zh').value) document.getElementById('title_zh').value = title + " [ZH]";
-		if(!document.getElementById('desc_en').value) document.getElementById('desc_en').value = desc + "\n(Translated)";
-		if(!document.getElementById('desc_zh').value) document.getElementById('desc_zh').value = desc + "\n(翻译)";
+
+//function doTranslate() {
+//	const title = document.getElementById('title_ja').value;
+//	const desc = document.getElementById('desc_ja').value;
+//	if (!title) return;
+//	if (confirm('日本語の内容を元に、空いている欄に翻訳を生成しますか？')) {
+//		if(!document.getElementById('title_en').value) document.getElementById('title_en').value = title + " [EN]";
+//		if(!document.getElementById('title_zh').value) document.getElementById('title_zh').value = title + " [ZH]";
+//		if(!document.getElementById('desc_en').value) document.getElementById('desc_en').value = desc + "\n(Translated)";
+//		if(!document.getElementById('desc_zh').value) document.getElementById('desc_zh').value = desc + "\n(翻译)";
+//	}
+//}
+
+
+// 翻訳実行（本物のAPI通信版）
+async function doTranslate() {
+	const titleJa = document.getElementById('title_ja').value;
+	const descJa = document.getElementById('desc_ja').value;
+	
+	if (!titleJa) { alert('まずは日本語の名称を入力してください。'); return; }
+	
+	if (!confirm('日本語の内容を元に、英語と中国語を自動翻訳で作成しますか？\n（入力済みの内容は上書きされます）')) {
+		return;
+	}
+
+	const btn = event.currentTarget;
+	const originalBtnText = btn.innerText;
+	btn.innerText = "翻訳中...";
+	btn.disabled = true;
+
+	// 翻訳対象の設定（名称と説明文 × 英語と中国語）
+	const tasks = [
+		{ id: 'title_en', text: titleJa, lang: 'EN' },
+		{ id: 'title_zh', text: titleJa, lang: 'ZH' },
+		{ id: 'desc_en', text: descJa, lang: 'EN' },
+		{ id: 'desc_zh', text: descJa, lang: 'ZH' }
+	];
+
+	try {
+		for (const task of tasks) {
+			if (!task.text) continue; // 日本語が空の場合はスキップ
+
+			const formData = new FormData();
+			formData.append('text', task.text);
+			formData.append('target_lang', task.lang);
+
+			const response = await fetch('translate_ajax.php', {
+				method: 'POST',
+				body: formData
+			});
+			const data = await response.json();
+
+			if (data.error) {
+				throw new Error(data.error);
+			}
+
+			if (data.translated_text) {
+				document.getElementById(task.id).value = data.translated_text;
+			}
+		}
+		alert('翻訳が完了しました！各タブを確認してください。');
+	} catch (error) {
+		alert('エラー: ' + error.message);
+	} finally {
+		btn.innerText = originalBtnText;
+		btn.disabled = false;
 	}
 }
+
+
+
+
 function testTTS(lang) {
 	const text = document.getElementById('desc_' + lang).value;
 	if (!text) return;
