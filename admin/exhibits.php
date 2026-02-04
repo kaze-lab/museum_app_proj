@@ -137,6 +137,7 @@ function is_lang_complete($title, $desc) {
 <div class="container">
 	<div class="header-flex">
 		<h1>展示物の管理 <small style="font-weight:normal; color:#888; font-size:1rem;">| <?= htmlspecialchars($permission['name_ja']) ?></small></h1>
+		<a href="exhibit_trash.php?m_id=<?= $museum_id ?>" class="btn btn-edit" style="margin-right:10px;">🗑 ゴミ箱を見る</a>
 		<a href="exhibit_add.php?id=<?= $museum_id ?>" class="btn btn-add">+ 新しい展示物を登録</a>
 	</div>
 

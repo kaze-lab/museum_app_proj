@@ -16,8 +16,7 @@ if (!$museum_id) {
 	exit;
 }
 
-// 2. 権限チェック（IDトラバーサル対策）
-// 今ログインしている人が、この博物館を管理する権利を持っているかDBに問い合わせる
+// 2. 権限チェック
 $sql = "
 	SELECT 
 		m.name_ja, 
@@ -36,13 +35,11 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute([$admin_id, $museum_id]);
 $permission = $stmt->fetch();
 
-// 権限がない、または博物館が存在しない場合はダッシュボードへ戻す
 if (!$permission) {
 	header('Location: index.php');
 	exit;
 }
 
-// 役割を変数に格納 (admin か editor)
 $my_role = $permission['role'];
 ?>
 <!DOCTYPE html>
@@ -58,9 +55,12 @@ $my_role = $permission['role'];
 		.btn-back { text-decoration: none; color: #666; font-size: 0.9rem; }
 		
 		.container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
-		.museum-header { margin-bottom: 40px; }
+		.museum-header { margin-bottom: 30px; }
 		.museum-header h1 { margin: 0; font-size: 1.8rem; color: #333; }
 		.role-indicator { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; background: #eee; color: #666; font-weight: bold; }
+
+		/* メッセージアラート */
+		.alert { background: #e6fff0; color: #1e7e34; padding: 15px 20px; border-radius: 12px; margin-bottom: 30px; border: 1px solid #c3e6cb; font-weight: bold; font-size: 0.9rem; }
 
 		/* メニュータイル */
 		.menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
@@ -69,9 +69,7 @@ $my_role = $permission['role'];
 		.menu-item h3 { margin: 0 0 10px 0; color: #333; }
 		.menu-item p { margin: 0; font-size: 0.85rem; color: #888; line-height: 1.5; }
 		
-		/* 権限による制限スタイル */
 		.disabled-item { background: #fdfdfd; opacity: 0.6; cursor: not-allowed; }
-		.disabled-item:hover { transform: none; border-color: transparent; }
 		.lock-icon { font-size: 0.7rem; background: #ddd; color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
 	</style>
 </head>
@@ -80,7 +78,7 @@ $my_role = $permission['role'];
 <header>
 	<a href="index.php" class="btn-back">← 博物館一覧に戻る</a>
 	<div class="user-info" style="font-size:0.85rem; color:#888;">
-		ログイン中: <?= htmlspecialchars($_SESSION['admin_name']) ?>
+		ログイン中: <?= htmlspecialchars($_SESSION['admin_name'] ?? '管理者') ?>
 	</div>
 </header>
 
@@ -92,20 +90,27 @@ $my_role = $permission['role'];
 		</div>
 	</div>
 
+	<!-- 修正メッセージの表示エリア -->
+	<?php if (isset($_GET['msg'])): ?>
+		<div class="alert">
+			<?php
+				if($_GET['msg'] === 'profile_updated') echo "✓ 博物館の基本情報を更新しました。";
+				if($_GET['msg'] === 'staff_updated') echo "✓ スタッフ情報を更新しました。";
+			?>
+		</div>
+	<?php endif; ?>
+
 	<div class="menu-grid">
-		<!-- 1. プロフィール編集 (全権限共通) -->
 		<a href="edit_profile.php?id=<?= $museum_id ?>" class="menu-item">
 			<h3>基本情報の編集</h3>
 			<p>住所、電話番号、公式サイトURL、紹介文などの情報を変更します。</p>
 		</a>
 
-		<!-- 2. 展示物管理 (全権限共通) -->
 		<a href="exhibits.php?id=<?= $museum_id ?>" class="menu-item">
 			<h3>展示物の管理</h3>
 			<p>展示品の登録、編集、公開・非公開の切り替えを行います。</p>
 		</a>
 
-		<!-- 3. スタッフ管理 (adminロールのみ) -->
 		<?php if ($my_role === 'admin'): ?>
 			<a href="staff.php?id=<?= $museum_id ?>" class="menu-item">
 				<h3>スタッフ管理</h3>
@@ -114,7 +119,7 @@ $my_role = $permission['role'];
 		<?php else: ?>
 			<div class="menu-item disabled-item">
 				<h3>スタッフ管理 <span class="lock-icon">制限中</span></h3>
-				<p>スタッフの管理権限はありません。博物館責任者にお問い合わせください。</p>
+				<p>スタッフの管理権限はありません。</p>
 			</div>
 		<?php endif; ?>
 	</div>

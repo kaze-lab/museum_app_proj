@@ -1,0 +1,1 @@
+ALTER TABLE museums ADD COLUMN deleted_at DATETIME NULL AFTER notes;
