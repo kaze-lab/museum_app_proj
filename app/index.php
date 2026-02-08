@@ -14,7 +14,7 @@ $q_word = $_GET['q'] ?? '';
 $q_cat	= $_GET['cat'] ?? '';
 $q_pref = $_GET['pref'] ?? '';
 
-// 4. クエリ構築
+// 4. クエリ構築：【人気順（view_count順）】で取得
 $sql = "SELECT m.*, c.name as category_name 
 		FROM museums m 
 		LEFT JOIN categories c ON m.category_id = c.id 
@@ -34,29 +34,33 @@ if ($q_pref) {
 	$params[] = "$q_pref%";
 }
 
-// 優先スコア順 ＋ 新着順
-$sql .= " ORDER BY m.priority_score DESC, m.id DESC";
+// ★修正：閲覧数（view_count）が多い順 ＋ 新着順で並べ替え
+$sql .= " ORDER BY m.view_count DESC, m.id DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $all_museums = $stmt->fetchAll();
 
-// スポンサー（PR）枠と通常枠を分ける
-$featured = array_filter($all_museums, function($m) { return $m['priority_score'] >= 80; });
-$regular  = array_filter($all_museums, function($m) { return $m['priority_score'] < 80; });
+// ★修正：上位3件を「人気の博物館（ランキング）」、4件目以降を「通常リスト」に分割
+$featured = array_slice($all_museums, 0, 3);
+$regular  = array_slice($all_museums, 3);
 
-// カテゴリ一覧（フィルタ用）
+// 5. カテゴリ一覧（フィルタ用）
 $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
+
+// 6. ★新規追加：スポンサー広告の取得（最下段用）
+$ads_stmt = $pdo->query("SELECT * FROM ads WHERE is_active = 1 ORDER BY sort_order ASC, id DESC");
+$ads = $ads_stmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-	<title><?= htmlspecialchars($settings['app_name']) ?></title>
+	<title><?= htmlspecialchars($settings['app_name'] ?? '博物館ガイド') ?></title>
 	<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 	<style>
 		:root { --primary: #26b396; --bg: #f4f7f6; --text: #2d3436; --card-bg: #ffffff; }
-		body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 100px; }
+		body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 120px; }
 
 		/* スプラッシュ */
 		#splash { position: fixed; inset: 0; background: var(--primary); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: 0.6s ease-in-out; }
@@ -73,14 +77,14 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
 		.filter-btn { white-space: nowrap; padding: 8px 18px; border-radius: 20px; background: white; border: 1px solid #ddd; font-size: 0.8rem; font-weight: bold; text-decoration: none; color: #666; }
 		.filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
-		/* スポンサー枠 */
+		/* 人気枠（上段） */
 		.section-label { font-size: 0.85rem; font-weight: 900; margin: 25px 20px 15px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
 		.featured-card { position: relative; margin: 0 20px 25px; border-radius: 25px; overflow: hidden; height: 240px; box-shadow: 0 15px 30px rgba(0,0,0,0.15); display: block; text-decoration: none; color: white; }
 		.featured-img { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.8); }
 		.featured-info { position: absolute; bottom: 0; left: 0; right: 0; padding: 25px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); }
-		.pr-badge { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.2); backdrop-filter: blur(5px); padding: 4px 12px; border-radius: 10px; font-size: 0.7rem; font-weight: bold; border: 1px solid rgba(255,255,255,0.3); }
+		.rank-badge { position: absolute; top: 20px; left: 20px; background: var(--primary); padding: 4px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: bold; }
 
-		/* リスト枠 */
+		/* リスト枠（中段） */
 		.museum-list { padding: 0 20px; }
 		.m-card { background: var(--card-bg); border-radius: 20px; display: flex; gap: 15px; padding: 12px; margin-bottom: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.04); text-decoration: none; color: inherit; align-items: center; }
 		.m-thumb { width: 90px; height: 90px; border-radius: 15px; object-fit: cover; background: #eee; flex-shrink: 0; }
@@ -88,6 +92,12 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
 		.m-cat { font-size: 0.65rem; color: var(--primary); font-weight: 900; margin-bottom: 4px; }
 		.m-name { font-size: 1rem; font-weight: bold; margin-bottom: 6px; line-height: 1.2; }
 		.m-dist { font-size: 0.75rem; color: #aaa; }
+
+		/* 広告枠（下段） */
+		.ad-section { margin-top: 40px; padding: 0 20px; }
+		.ad-card { display: block; text-decoration: none; margin-bottom: 20px; border-radius: 15px; overflow: hidden; border: 1px solid #eee; background: white; }
+		.ad-img { width: 100%; height: auto; display: block; }
+		.ad-tag { font-size: 0.6rem; color: #999; padding: 5px 10px; background: #f9f9f9; text-align: right; }
 
 		/* QRボタン */
 		#btn-qr-main { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #111; color: white; padding: 12px 30px; border-radius: 40px; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 200; cursor: pointer; border: 2px solid rgba(255,255,255,0.1); }
@@ -120,12 +130,15 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
 	</div>
 </div>
 
-<!-- PR・注目枠 -->
+<!-- 人気ランキング枠（自動：view_count順の上位3件） -->
 <?php if (!$q_word && !$q_cat && !$q_pref && !empty($featured)): ?>
-	<div class="section-label">Featured / 注目の博物館</div>
-	<?php foreach ($featured as $f): ?>
+	<div class="section-label">Popular / 人気の博物館</div>
+	<?php 
+	$rank = 1;
+	foreach ($featured as $f): 
+	?>
 	<a href="view.php?m=<?= $f['m_code'] ?>" class="featured-card">
-		<div class="pr-badge">RECOMMENDED</div>
+		<div class="rank-badge">RANK <?= $rank++ ?></div>
 		<img src="../<?= $f['main_image'] ?: 'img/no-image.webp' ?>" class="featured-img">
 		<div class="featured-info">
 			<div style="font-size:0.7rem; opacity:0.8; font-weight:bold;"><?= htmlspecialchars($f['category_name']) ?></div>
@@ -148,7 +161,24 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
 		</div>
 	</a>
 	<?php endforeach; ?>
+	
+	<?php if (empty($all_museums)): ?>
+		<div style="text-align:center; padding:40px; color:#aaa;">見つかりませんでした。</div>
+	<?php endif; ?>
 </div>
+
+<!-- 広告・スポンサー枠（下段：楽天トラベル風） -->
+<?php if (!empty($ads)): ?>
+	<div class="section-label">Special / お得な情報・PR</div>
+	<div class="ad-section">
+		<?php foreach ($ads as $ad): ?>
+			<a href="<?= htmlspecialchars($ad['link_url']) ?>" class="ad-card" target="_blank">
+				<img src="../<?= htmlspecialchars($ad['image_path']) ?>" class="ad-img">
+				<div class="ad-tag">スポンサー広告</div>
+			</a>
+		<?php endforeach; ?>
+	</div>
+<?php endif; ?>
 
 <!-- QRボタン -->
 <div id="btn-qr-main" onclick="startScan()">
@@ -178,7 +208,13 @@ $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
 
 <script>
 window.onload = () => {
-	setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash').remove(), 600); }, 1500);
+	setTimeout(() => { 
+		const s = document.getElementById('splash');
+		if(s) {
+			s.style.opacity = '0'; 
+			setTimeout(() => s.remove(), 600); 
+		}
+	}, 1500);
 	if (navigator.geolocation) navigator.geolocation.getCurrentPosition(updateDist);
 };
 
@@ -204,7 +240,7 @@ function getDist(la1, lo1, la2, lo2) {
 	return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// QRスキャンロジック（jsQR利用）
+// QRスキャンロジック
 let v = document.getElementById('v'), sc = false;
 function startScan() {
 	document.getElementById('scanner-ui').style.display = 'flex';
