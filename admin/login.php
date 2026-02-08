@@ -40,6 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			
 			mb_send_mail($email, $subject, $body, $headers);
 
+			// ★追加: セッションをリフレッシュして、SV等の古いログイン情報をクリアする
+			session_regenerate_id(true);
+			$_SESSION = array();
+
 			// 一時的なセッションを保存して認証画面へ
 			$_SESSION['admin_temp_id'] = $admin['id'];
 			header('Location: auth_verify.php');
