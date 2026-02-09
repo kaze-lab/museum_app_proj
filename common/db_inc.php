@@ -1,8 +1,24 @@
 <?php
 /**
  * データベース接続設定ファイル (db_inc.php)
- * このファイルは他のプログラムから読み込まれて使われます
  */
+
+// --- 【追加機能】フォルダごとにセッション名を分離する ---
+// session_start() が呼ばれる前にセッション名（クッキーの鍵名）を決定します。
+if (session_status() === PHP_SESSION_NONE) {
+    $script_path = $_SERVER['SCRIPT_NAME'];
+    
+    if (strpos($script_path, '/sv/') !== false) {
+        // スーパーバイザー用
+        session_name('MUSEUM_SV_SESS');
+    } elseif (strpos($script_path, '/admin/') !== false) {
+        // 博物館管理者（スタッフ）用
+        session_name('MUSEUM_ADMIN_SESS');
+    } elseif (strpos($script_path, '/app/') !== false) {
+        // 一般利用者アプリ用
+        session_name('MUSEUM_APP_SESS');
+    }
+}
 
 // --- データベース接続情報 ---
 $host = 'mysql8018.xserver.jp'; 
@@ -20,7 +36,7 @@ try {
 }
 
 /**
- * 【追加機能】アップロードされた画像をWebPに変換・リサイズして保存する
+ * アップロードされた画像をWebPに変換・リサイズして保存する
  */
 function saveImageAsWebP($file, $dir, $prefix = '', $max_width = 1200) {
 	if (empty($file['tmp_name'])) return false;

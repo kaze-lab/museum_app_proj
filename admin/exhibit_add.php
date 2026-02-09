@@ -224,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 			<div class="btn-group">
 				<a href="exhibits.php?id=<?= $museum_id ?>" class="btn btn-outline">キャンセル</a>
-				<button type="submit" class="btn btn-primary">登録を実行する</button>
+				<button type="submit" class="btn btn-primary">登録</button>
 			</div>
 		</form>
 	</div>

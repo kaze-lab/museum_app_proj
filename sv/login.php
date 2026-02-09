@@ -1,54 +1,53 @@
-
 <?php
-
+// /sv/login.php
 require_once('../common/db_inc.php');
 session_start();
 
-mb_language("Japanese");
-mb_internal_encoding("UTF-8");
+if (isset($_SESSION['sv_logged_in'])) {
+	header('Location: index.php');
+	exit;
+}
 
 $error = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-	
-	
 	$email = $_POST['email'];
 	$pass = $_POST['password'];
 
-	//メールアドレスでユーザーを検索
 	$stmt = $pdo->prepare("SELECT * FROM supervisors WHERE email = ?");
 	$stmt->execute([$email]);
 	$sv = $stmt->fetch();
 
 	if ($sv && password_verify($pass, $sv['password'])) {
-		
-		// 認証コードを生成(5桁30分有効)
 		$auth_code = sprintf('%05d', mt_rand(0, 99999));
 		$expiry = date('Y-m-d H:i:s', strtotime('+30 minutes'));
 
-		// コード保存
 		$stmt = $pdo->prepare("UPDATE supervisors SET auth_code = ?, auth_expiry = ? WHERE id = ?");
 		$stmt->execute([$auth_code, $expiry, $sv['id']]);
 
-		//メールを送信
-		$to = $sv['email'];
-		$subject = "【博物館ガイド】ログイン認証コードのお知らせ";
+		// --- 【文字化け対策版】メール送信ロジック ---
+		$subject = "【博物館ガイド】全体管理ログイン認証コード";
 		$body = $sv['name'] . " 様\n\n";
-		$body .= "博物館ガイド管理システムへのログインを承りました。\n";
+		$body .= "システム全体管理（SV）へのログインを承りました。\n";
 		$body .= "以下の認証コードを入力してログインを完了させてください。\n\n";
 		$body .= "認証コード： " . $auth_code . "\n\n";
-		$body .= "※有効期限は30分間です。\n";
-		$body .= "※心当たりがない場合は、このメールを破棄してください。";
-		
-		$headers = "From: info_museum@41mono.net";
+		$body .= "※有効期限は30分間です。";
 
-		if (mb_send_mail($to, $subject, $body, $headers)) {
-			// 送信成功：認証画面へ
+		mb_language("uni");
+		mb_internal_encoding("UTF-8");
+
+		$from_email = "info_museum@41mono.net";
+		$from_name = "博物館ガイド管理事務局";
+		
+		$headers = "From: " . mb_encode_mimeheader($from_name, "UTF-8") . " <{$from_email}>\r\n";
+		$headers .= "Reply-To: {$from_email}\r\n";
+		$headers .= "Content-Type: text/plain; charset=UTF-8";
+
+		if (mb_send_mail($sv['email'], $subject, $body, $headers, "-f " . $from_email)) {
 			$_SESSION['auth_sv_id'] = $sv['id'];
 			header('Location: auth.php');
 			exit;
 		} else {
-			$message = "メール送信に失敗しました。サーバーの設定を確認してください。";
 			$error = true;
 		}
 	} else {
@@ -56,241 +55,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	}
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>ログイン - 博物館ガイド</title>
+	<title>全体管理 ログイン (SV) - 博物館ガイド</title>
 	<style>
-		/* カラーテーマ定義 */
-		:root {
-			--primary-color: #26b396;	/* メインカラー（グリーンシアン系） */
-			--bg-color: #f4f7f7;		/* ページ背景（薄いグレー）*/
-			--input-bg: #ffffff;		/* 入力欄の背景（白）*/
-			--text-color: #333;			/* 文字の色（薄いグレー）*/
-		}
-		
-		/* ログイン画面のレイアウト*/
-		body {
-			font-family: sans-serif;				/* 全体のフォント */
-			background-color: var(--bg-color);		/* 背景色（テーマ変数） */
-			
-			/*ログインカードを画面中央に配置*/
-			display: flex;							
-			justify-content: center;				
-			align-items: center;					
-													
-			height: 100vh;							
-													
-													
-			margin: 0;								/* デフォルト余白をリセット*/
-													
-		}
-
-		/* ログインカードの見た目*/
-		.login-card {
-			background: white;						/* 白背景でカードを際立たせる */
-			padding: 40px 30px;						/* 内側余白（上下40px / 左右30px） */
-			border-radius: 20px;					/* 角を丸くして柔らかい印象に */
-			box-shadow: 0 4px 15px rgba(0,0,0,0.08);	/* ふわっと浮く影 */
-			width: 100%;							/* 親幅いっぱい（狭い画面向け） */
-			max-width: 350px;						/* カードの最大幅（広い画面向け） */
-			text-align: center;						/* タイトルやボタンを中央揃え */
-		}
-
-		/* ログイン画面のタイトル */
-		h2 {
-			color: var(--text-color);				/* テキストカラー（テーマ変数） */
-			margin-bottom: 30px;					/* タイトル下の余白 */
-			font-size: 1.4em;						/* 少し大きめの文字サイズ */
-		}
-		
-
-		/* 入力欄とアイコンのレイアウト用ラッパー */
-		.input-group {
-			position: relative;						/* 目アイコンを absolute で配置する基準 */
-			margin-bottom: 15px;					/* 下の余白*/
-		}
-		
-		/* ログイン画面の入力欄（メール・パスワード）を綺麗に見せるための CSS  */
-		input {
-			width: 100%;							/* 親幅いっぱいに広げる */
-			padding: 14px 20px;						/* 内側余白（タップしやすくする） */
-			border-radius: 30px;					/* 丸みのある入力欄 */
-			border: 1px solid #ddd;					/* 薄いグレーの枠線*/
-			background-color: var(--input-bg);		/* 入力欄の背景色 */
-			font-size: 16px;						/* スマホでのズーム防止（iOS対策） */
-			box-sizing: border-box;					/* padding/border を含めて幅を計算 */
-			outline: none;							/* フォーカス枠を非表示 */
-		}
-		
-		/* 入力欄フォーカス時の強調表示 */
-		input:focus {
-			border-color: var(--primary-color);		/* 入力中の欄を分かりやすくする */
-		}
-
-		/* パスワード欄「目」アイコン */
-		.toggle-password {
-			position: absolute;					/* input-group を基準に絶対配置 */
-			right: 18px;						/* 右端に寄せる */
-			top: 50%;							/* 縦中央に配置 */
-			transform: translateY(-50%);		/* 完全な中央揃え */
-			cursor: pointer;					/* クリック可能に見せる */
-			color: #888;						/* 控えめなグレー */
-			display: flex;						/* アイコンを中央揃え */
-			align-items: center;				
-
-		}
-
-		/* ログインボタン*/
-		.btn-login {
-			width: 100%;						/* カード幅いっぱいに広げる */
-			padding: 14px;						/* 押しやすい余白 */
-			border-radius: 30px;				/* 丸みのあるボタン */
-			border: none;						 /* フラットな見た目 */
-			background-color: var(--primary-color);	/* テーマカラー*/
-			color: white;						/* 文字色を白でコントラスト確保*/
-			font-size: 16px;					/* スマホでのズーム防止（iOS対策） */
-			font-weight: bold;					/* ボタンの視認性を上げる */
-			cursor: pointer;					/* クリック可能に見せる */
-			margin-top: 15px;					/* 上の余白 */
-		}
-
-		/* 補助リンク（パスワード再発行など） */
-		.links {
-			margin-top: 20px;		/* ボタンとの間隔を確保 */
-			font-size: 13px;		/* メイン要素より控えめなサイズ */
-		}
-
-		/* 補助リンク（パスワード再発行など） */
-		.links a {
-			color: #888;				/* メイン要素より控えめな色 */
-			text-decoration: none;		/* 下線を消してシンプルに */
-		}
-
-		/* エラー時に表示するモーダル背景 */
-		.modal-overlay {
-			display: <?= $error ? 'flex' : 'none' ?>;				/* PHPで表示/非表示を切り替え */
-			position: fixed;										/* 画面全体を覆う */
-			top: 0; left: 0; width: 100%; height: 100%;				
-			background: rgba(0,0,0,0.5);							/* 半透明の黒背景 */
-			justify-content: center; align-items: center;			/* 中央にモーダルを配置 */
-			z-index: 1000;											/* 最前面に表示 */
-		}
-
-		/* エラーメッセージのポップアップ */
-		.modal-content {
-			background: white;					/* 半透明背景の上に浮かぶ白いボックス */
-			padding: 25px;						/* 適度な内側余白 */
-			border-radius: 15px;				/* 柔らかい印象の角丸 */
-			text-align: center;					/* 中央揃え */
-			width: 80%;							/* 画面幅に応じたサイズ */
-			max-width: 280px;					/* ポップアップとして適切な最大幅 */
-		}
-
-		/* モーダル内の再試行ボタン*/
-		.btn-retry {
-			background: var(--primary-color);		/* 操作ボタンとして目立たせる */
-			color: white;							/* コントラストを確保 */
-			border: none;							/* シンプルな見た目 */
-			padding: 8px 25px;						/* モーダル用の少し小さめサイズ */
-			border-radius: 20px;					/* 柔らかい印象の角丸 */
-			cursor: pointer;						/* クリック可能に見せる */
-			margin-top: 15px;						/* 上の余白 */
-
-
-		}
+		:root { --primary-color: #34495e; --bg-color: #f4f7f7; --text-color: #333; }
+		body { font-family: sans-serif; background-color: var(--bg-color); display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+		.login-card { background: white; padding: 40px 30px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.12); width: 100%; max-width: 360px; text-align: center; border-top: 6px solid var(--primary-color); }
+		h2 { color: var(--text-color); margin: 0 0 10px 0; font-size: 1.3em; }
+		.subtitle { font-size: 0.8rem; color: #888; margin-bottom: 30px; line-height: 1.4; }
+		.input-group { margin-bottom: 15px; text-align: left; }
+		label { display: block; font-size: 0.8em; font-weight: bold; color: #777; margin-bottom: 5px; }
+		input { width: 100%; padding: 14px 15px; border-radius: 10px; border: 1px solid #ddd; font-size: 16px; box-sizing: border-box; outline: none; }
+		input:focus { border-color: var(--primary-color); }
+		.btn-login { width: 100%; padding: 14px; border-radius: 30px; border: none; background-color: var(--primary-color); color: white; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+		.links { margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; }
+		.links a { color: #888; text-decoration: none; display: block; margin-bottom: 10px; }
+		.modal-overlay { display: <?= $error ? 'flex' : 'none' ?>; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+		.modal-content { background: white; padding: 25px; border-radius: 15px; text-align: center; width: 80%; max-width: 280px; }
+		.btn-retry { background: var(--primary-color); color: white; border: none; padding: 8px 25px; border-radius: 20px; cursor: pointer; margin-top: 15px; }
 	</style>
 </head>
 <body>
-
-<!-- ★ここから追加★ -->
-<?php if (isset($_GET['msg']) && $_GET['msg'] === 'reset_success'): ?>
-<div style="position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#26b396; color:white; padding:10px 20px; border-radius:20px; box-shadow:0 2px 10px rgba(0,0,0,0.1);">
-    パスワードが正常に更新されました。
-</div>
-<?php endif; ?>
-<!-- ★ここまで追加★ -->
-
-
-<!-- ログインカード全体 -->
 <div class="login-card">
-
-	<!-- タイトル 	-->
-	<h2>ログイン</h2>
-
-	<!-- ログインフォーム -->
+	<h2>全体管理 ログイン</h2>
+	<p class="subtitle">新規博物館の登録・システム設定を行う<br>スーパーバイザー専用の入口です。</p>
 	<form method="POST">
-		
-		<!-- メール入力欄 -->
-		<div class="input-group">	
-			<input type="email" name="email" placeholder="メールアドレス" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
-		</div>
-
-		<!-- パスワード入力欄 -->
-		<div class="input-group">
-			<input type="password" name="password" id="password" placeholder="パスワード" required>
-	
-			<!-- パスワード表示切り替えアイコン -->
-			<span class="toggle-password" onclick="togglePassword()">
-				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					
-					<!-- 目の形 -->
-					<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-
-					<!-- 瞳 -->
-					<circle cx="12" cy="12" r="3"></circle>
-					
-					
-					<!-- パスワード非表示の車線(JSで切り替え) -->
-					<line id="eye-slash" x1="1" y1="1" x2="23" y2="23"></line>
-				</svg>
-			</span>
-		</div>
-
-		<!--送信ボタン -->
+		<div class="input-group"><label>管理用メールアドレス</label><input type="email" name="email" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"></div>
+		<div class="input-group"><label>パスワード</label><input type="password" name="password" required></div>
 		<button type="submit" class="btn-login">ログイン</button>	
 	</form>
-	
-	<!-- 補助リンク -->
 	<div class="links">
-		<a href="reissue.php">パスワードを忘れた方はこちら</a>
-	</div>
-
-</div>
-
-<!-- エラー時に表示するモーダル全体 -->
-<div class="modal-overlay" id="errorModal">
-
-	<!-- エラーメッセージのポップアップ -->
-	<div class="modal-content">
-		<p>メールアドレスまたは<br>パスワードが正しくありません</p>
-		
-		<!-- モーダルを閉じるボタン -->
-		<button class="btn-retry" onclick="document.getElementById('errorModal').style.display='none'">再入力</button>
-
+		<a href="../admin/login.php">博物館スタッフ(展示物編集)の方はこちら</a>
+		<a href="reissue.php">パスワードを忘れた場合</a>
 	</div>
 </div>
-
-<script>
-	/* パスワードの表示/非表示を切り替える */
-	function togglePassword() {
-		const passInput = document.getElementById('password');
-		const eyeSlash = document.getElementById('eye-slash');
-
-		if (passInput.type === 'password') {
-			//表示する
-			passInput.type = 'text';
-			eyeSlash.style.display = 'none';
-		} else {
-			//隠す
-			passInput.type = 'password';
-			eyeSlash.style.display = 'block';
-		}
-	}
-</script>
-
+<div class="modal-overlay" id="errorModal"><div class="modal-content"><p>認証に失敗しました。</p><button class="btn-retry" onclick="document.getElementById('errorModal').style.display='none'">閉じる</button></div></div>
 </body>
 </html>

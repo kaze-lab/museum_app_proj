@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		.btn-translate:hover { background: var(--primary-color); color: white; }
 
 		.btn-group { display: flex; gap: 15px; margin-top: 40px; border-top: 1px solid var(--border-color); padding-top: 30px; }
-		.btn { text-decoration: none; padding: 12px 35px; border-radius: 30px; font-weight: bold; cursor: pointer; border: 1px solid; font-size: 1rem; }
+		.btn { text-decoration: none; padding: 12px 35px; border-radius: 30px; font-weight: bold; cursor: pointer; border: 1px solid; font-size: 1rem; text-align: center; }
 		.btn-primary { background: var(--primary-color); color: white; border-color: var(--primary-color); }
 		.btn-outline { background: white; color: #666; border-color: #ddd; }
 		.btn-sm { padding: 8px 15px; font-size: 0.8rem; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer; }
@@ -173,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					<div class="tab-inner-title">日本語の解説</div>
 					<button type="button" class="btn-translate" onclick="runTranslate()">
 						<span>🪄</span> 他言語を一括生成
-					</button>
+                    </button>
 				</div>
 				<label>展示物名（日本語）</label>
 				<input type="text" name="title_ja" id="title_ja" value="<?= htmlspecialchars($exhibit['title_ja']) ?>">
@@ -213,8 +213,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			</div>
 
 			<div class="btn-group">
-				<button type="submit" class="btn btn-primary">変更を保存する</button>
 				<a href="exhibits.php?id=<?= $museum_id ?>" class="btn btn-outline" style="text-decoration:none;">キャンセル</a>
+				<button type="submit" class="btn btn-primary">変更</button>
 			</div>
 		</form>
 	</div>
