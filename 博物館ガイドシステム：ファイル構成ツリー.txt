@@ -1,0 +1,38 @@
+博物館ガイドシステム：ファイル構成ツリー
+
+
+
+/ (root)
+├── common/
+│   └── db_inc.php          # 共通DB接続、画像WebP変換、セッション分離ロジック
+├── sv/                     # システム全体管理（スーパーバイザー用：ネイビー配色）
+│   ├── login.php           # SV専用ログイン
+│   ├── auth.php            # 2段階認証
+│   ├── index.php           # 登録済み博物館一覧（ソート機能付）
+│   ├── museum_add.php      # 博物館の新規登録（管理者招待メール送信）
+│   ├── museum_edit.php     # 博物館情報・広告モードの管理（★次回修正対象）
+│   ├── trash.php           # 博物館のゴミ箱管理
+│   ├── settings.php        # システム基本設定（DeepL API等）
+│   ├── account.php         # SV自身のパスワード変更
+│   └── logout.php          # SVログアウト
+├── admin/                  # 博物館別管理（スタッフ用：グリーン配色）
+│   ├── login.php           # スタッフ専用ログイン（認証コード送付）
+│   ├── auth_verify.php     # 認証コード入力画面
+│   ├── index.php           # 担当博物館の選択ダッシュボード
+│   ├── museum_manage.php   # 各館の管理メニュー（ハブ画面）
+│   ├── edit_profile.php    # プロフィール・翻訳（魔法の杖・モーダル対応版）
+│   ├── exhibits.php        # 展示物一覧（ソート機能・検索・フィルタ付）
+│   ├── exhibit_add.php     # 展示物登録（魔法の杖ボタン、WebP変換）
+│   ├── exhibit_edit.php    # 展示物編集（魔法の杖ボタン、翻訳ブロック画面対応）
+│   ├── exhibit_trash.php   # 展示物のゴミ箱
+│   ├── staff.php           # 館内スタッフ（管理者・編集者）の招待管理
+│   ├── set_password.php    # 初回パスワード設定画面
+│   ├── translate_ajax.php  # DeepL API連携プログラム
+│   └── logout.php          # スタッフログアウト
+├── app/                    # 来館者向けアプリ（スマホ閲覧用）
+│   ├── index.php           # アプリTOP（シンプルリスト ＋ 中央下QRボタン）
+│   ├── view.php            # 博物館TOP（検索 ＋ リスト ＋ モーダル情報 ＋ 広告）
+│   └── exhibit.php         # 展示物紹介（★現在作成中：多言語・音声対応）
+├── support/
+│   └── index.php           # 管理者向けサポートページ
+└── uploads/                # 画像保存フォルダ（museums/館ID/ ごとに自動生成）
