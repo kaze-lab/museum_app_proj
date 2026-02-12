@@ -1,6 +1,9 @@
 <?php
+// /sv/index.php
 require_once('../common/db_inc.php');
 require_once('_header.php');
+
+// ログインチェックは _header.php で行われています
 
 // --- 1. パラメータの取得 ---
 $keyword	 = isset($_GET['keyword']) ? trim($_GET['keyword']) : '';
@@ -12,7 +15,7 @@ $sort		 = $_GET['sort'] ?? 'id_desc';
 $cat_list_stmt = $pdo->query("SELECT * FROM categories ORDER BY id");
 $cat_list = $cat_list_stmt->fetchAll();
 
-// --- 3. SQLの組み立て (deleted_at IS NULL を追加) ---
+// --- 3. SQLの組み立て ---
 $sql = "
 	SELECT 
 		m.id, 
@@ -68,7 +71,7 @@ function getSortIcon($base, $current_sort) {
 }
 ?>
 
-<title>博物館の管理 - 博物館ガイド</title>
+<title>登録済み博物館一覧 - 博物館ガイドSV</title>
 <style>
 	.card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 20px; }
 	.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
@@ -82,9 +85,9 @@ function getSortIcon($base, $current_sort) {
 	.col-id { width: 90px; }
 	.col-action { width: 180px; text-align: center !important; }
 	.name-ja { font-weight: bold; color: #333; margin-bottom: 2px; }
-	.name-kana { font-size: 0.75rem; color: #888; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+	.name-kana { font-size: 0.75rem; color: #888; }
 	.sort-link { text-decoration: none; color: inherit; display: flex; align-items: center; font-weight: bold; }
-	.status-badge { padding: 4px 12px; border-radius: 15px; font-size: 0.8em; font-weight: bold; }
+	.status-badge { padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; font-weight: bold; }
 	.status-public { background: #e6fff0; color: #1e7e34; }
 	.status-private { background: #fff0f0; color: #d00; }
 	.btn { text-decoration: none; padding: 10px 20px; border-radius: 25px; font-weight: bold; font-size: 13px; cursor: pointer; display: inline-block; }
@@ -98,7 +101,8 @@ function getSortIcon($base, $current_sort) {
 		<div class="card-header">
 			<h2>登録済み博物館一覧</h2>
 			<div>
-				<!-- システム設定へのリンクを追加 -->
+				<!-- ★追加：共通広告管理への導線 -->
+				<a href="ads.php" class="btn btn-outline" style="border:none; margin-right:10px;">📢 共通広告管理</a>
 				<a href="settings.php" class="btn btn-outline" style="border:none; margin-right:10px;">⚙ システム設定</a>
 				<a href="trash.php" class="btn btn-outline" style="border:none; margin-right:10px;">🗑 ゴミ箱を見る</a>
 				<a href="museum_add.php" class="btn btn-primary">+ 新しい博物館を登録</a>
@@ -111,7 +115,7 @@ function getSortIcon($base, $current_sort) {
 					if($_GET['msg']==='added') echo "正常に登録されました。";
 					if($_GET['msg']==='updated') echo "情報を更新しました。";
 					if($_GET['msg']==='trashed') echo "博物館をゴミ箱に移動しました。";
-					if($_GET['msg']==='settings_updated') echo "システム設定を更新しました。"; // ←これを追加
+					if($_GET['msg']==='settings_updated') echo "システム設定を更新しました。";
 				?>
 			</div>
 		<?php endif; ?>

@@ -1,104 +1,79 @@
 <?php
+// /sv/museum_edit.php
 require_once('../common/db_inc.php');
 session_start();
 
+// 1. SVログインチェック
 if (!isset($_SESSION['sv_logged_in'])) {
 	header('Location: login.php');
 	exit;
 }
 
 $id = $_GET['id'] ?? null;
-if (!$id) {
-	header('Location: index.php');
-	exit;
-}
+if (!$id) { header('Location: index.php'); exit; }
 
-// 1. カテゴリ一覧を取得
+// カテゴリ一覧
 $categories = $pdo->query("SELECT * FROM categories ORDER BY id")->fetchAll();
 
-// 2. 現在のデータ（博物館 ＋ 筆頭管理者）を取得
-$sql = "
-	SELECT m.*, ma.email 
-	FROM museums m 
-	LEFT JOIN admin_museum_permissions amp ON m.id = amp.museum_id AND amp.role = 'admin'
-	LEFT JOIN museum_admins ma ON amp.admin_id = ma.id
-	WHERE m.id = ?
-";
+// 博物館情報 ＋ 筆頭管理者のメール取得
+$sql = "SELECT m.*, ma.email 
+		FROM museums m 
+		LEFT JOIN admin_museum_permissions amp ON m.id = amp.museum_id AND amp.role = 'admin'
+		LEFT JOIN museum_admins ma ON amp.admin_id = ma.id
+		WHERE m.id = ?";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$id]);
 $museum = $stmt->fetch();
 
-if (!$museum) {
-	header('Location: index.php');
-	exit;
-}
+if (!$museum) { header('Location: index.php'); exit; }
 
 $error_msg = "";
 
+// 2. 更新処理
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	$name_ja = trim($_POST['name_ja']);
 	$name_kana = trim($_POST['name_kana']);
 	$category_id = $_POST['category_id'];
-	$email = trim($_POST['email']);
-	$password = $_POST['password']; // 管理者変更時のみ使用
-	$address = $_POST['address'];
+	$address = trim($_POST['address']);
 	$phone_number = $_POST['phone_number'];
 	$website_url = $_POST['website_url'];
-	$is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 0;
+	$is_active = (int)$_POST['is_active'];
+	$ad_type = (int)$_POST['ad_type'];
+	$ad_custom_link = trim($_POST['ad_custom_link']);
 	$notes = $_POST['notes'];
 
-	// バリデーション
-	if (empty($name_ja) || empty($name_kana) || empty($category_id) || empty($email)) {
-		$error_msg = "必須項目 (*) はすべて入力してください。";
-	}
-
-	// 名称重複チェック（自分以外）
-	if (empty($error_msg)) {
-		$st_name = $pdo->prepare("SELECT COUNT(*) FROM museums WHERE name_ja = ? AND id != ?");
-		$st_name->execute([$name_ja, $id]);
-		if ($st_name->fetchColumn() > 0) {
-			$error_msg = "その博物館名は既に他の施設で使用されています。";
-		}
+	if (empty($name_ja) || empty($name_kana)) {
+		$error_msg = "必須項目を入力してください。";
 	}
 
 	if (empty($error_msg)) {
 		try {
 			$pdo->beginTransaction();
 
-			// ① 博物館情報の更新 (updated_atはDBが自動更新するため省略可能ですが、手動でセットしておきます)
+			// 自館広告画像の処理（アップロードされた場合）
+			$ad_custom_image = $museum['ad_custom_image'];
+			if (!empty($_FILES['ad_image']['name'])) {
+				$dir = "../uploads/museums/{$id}/ads/";
+				$new_ad_path = saveImageAsWebP($_FILES['ad_image'], $dir, 'ad_');
+				if ($new_ad_path) {
+					if ($ad_custom_image && file_exists("../" . $ad_custom_image)) unlink("../" . $ad_custom_image);
+					$ad_custom_image = $new_ad_path;
+				}
+			}
+
+			// 更新SQL
 			$sql_u = "UPDATE museums SET 
 						name_ja = ?, name_kana = ?, category_id = ?, 
 						address = ?, phone_number = ?, website_url = ?, 
-						is_active = ?, notes = ?, updated_at = NOW() 
+						is_active = ?, ad_type = ?, ad_custom_image = ?, ad_custom_link = ?, 
+						notes = ?, updated_at = NOW() 
 					  WHERE id = ?";
-			$pdo->prepare($sql_u)->execute([$name_ja, $name_kana, $category_id, $address, $phone_number, $website_url, $is_active, $notes, $id]);
-
-			// ② 管理者の変更処理（メールアドレスが変わった場合）
-			if ($email !== $museum['email']) {
-				// SV重複チェック
-				$st_sv = $pdo->prepare("SELECT COUNT(*) FROM supervisors WHERE email = ?");
-				$st_sv->execute([$email]);
-				if ($st_sv->fetchColumn() > 0) throw new Exception("SV用アドレスは管理者には使用できません。");
-
-				// 既存の管理者かチェック
-				$st_adm = $pdo->prepare("SELECT id FROM museum_admins WHERE email = ?");
-				$st_adm->execute([$email]);
-				$existing = $st_adm->fetch();
-
-				if ($existing) {
-					$admin_id = $existing['id'];
-				} else {
-					// 新規ならアカウント作成
-					if (empty($password)) throw new Exception("新規管理者の場合は初期パスワードを入力してください。");
-					$st_new = $pdo->prepare("INSERT INTO museum_admins (email, password) VALUES (?,?)");
-					$st_new->execute([$email, password_hash($password, PASSWORD_DEFAULT)]);
-					$admin_id = $pdo->lastInsertId();
-				}
-
-				// 古いadmin権限を削除（もしあれば）して、新しいadminを紐付ける
-				$pdo->prepare("DELETE FROM admin_museum_permissions WHERE museum_id = ? AND role = 'admin'")->execute([$id]);
-				$pdo->prepare("INSERT INTO admin_museum_permissions (admin_id, museum_id, role) VALUES (?, ?, 'admin')")->execute([$admin_id, $id]);
-			}
+			$pdo->prepare($sql_u)->execute([
+				$name_ja, $name_kana, $category_id, 
+				$address, $phone_number, $website_url, 
+				$is_active, $ad_type, $ad_custom_image, $ad_custom_link, 
+				$notes, $id
+			]);
 
 			$pdo->commit();
 			header("Location: index.php?msg=updated");
@@ -115,135 +90,150 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="ja">
 <head>
 	<meta charset="UTF-8">
-	<title>博物館情報の編集 - 博物館ガイド</title>
+	<title>博物館の編集 - SV管理</title>
 	<style>
-		:root { --primary-color: #26b396; --bg-color: #f4f7f7; --border-color: #e9ecef;}
-		body { font-family: sans-serif; background-color: var(--bg-color); margin: 0; display: flex; justify-content: center; padding: 40px 0; color:#333; }
-		.container { max-width: 800px; width: 100%; padding: 0 20px; }
+		:root { --primary-color: #34495e; --accent-color: #26b396; --bg-color: #f4f7f7; --border-color: #e9ecef; }
+		body { font-family: sans-serif; background-color: var(--bg-color); margin: 0; padding: 40px 0; color: #333; }
+		.container { max-width: 900px; margin: auto; padding: 0 20px; }
 		.card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-		.card-header { padding-bottom: 20px; margin-bottom: 30px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-		.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
-		.form-group { margin-bottom: 10px; position: relative; }
+		
+		.header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 30px; }
+		h2 { margin: 0; font-size: 1.5rem; color: var(--primary-color); }
+		
+		.section-title { font-size: 1rem; font-weight: bold; color: var(--primary-color); background: #f8f9fa; padding: 10px 15px; border-left: 5px solid var(--primary-color); margin: 30px 0 20px; }
+		
+		.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 		.full-width { grid-column: 1 / -1; }
-		label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 0.9em; }
-		label span.req { color: #d00; margin-left: 3px; }
-		input, select, textarea { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 1em; }
-		.info-text { font-size: 0.8em; color: #888; margin-top: 6px; min-height: 1.4em; }
-		.btn-group { display: flex; gap: 10px; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 25px; }
-		.btn { text-decoration: none; padding: 12px 25px; border-radius: 25px; font-weight: bold; cursor: pointer; border: 1px solid; text-align: center; font-size: 14px; }
+		
+		label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 0.9rem; color: #555; }
+		input, select, textarea { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 1rem; }
+		
+		/* 広告設定エリア */
+		.ad-config-box { background: #f0f4f8; padding: 20px; border-radius: 12px; border: 1px solid #d1d9e6; }
+
+		.btn-group { display: flex; gap: 15px; margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-color); }
+		.btn { text-decoration: none; padding: 12px 35px; border-radius: 30px; font-weight: bold; cursor: pointer; border: 1px solid; font-size: 1rem; }
 		.btn-primary { background: var(--primary-color); color: white; border-color: var(--primary-color); }
-		.btn-primary:disabled { background: #ccc; border-color: #ccc; }
-		.alert { background: #fff3f3; color: #d00; padding: 15px; border-radius: 10px; margin-bottom: 25px; border: 1px solid #ffcccc; }
-		input:disabled { background-color: #f5f5f5; border-color: #eee; }
+		.btn-outline { background: white; color: #666; border-color: #ddd; }
+		
+		.btn-sm { padding: 8px 15px; font-size: 0.75rem; background: var(--accent-color); color: white; border: none; border-radius: 6px; cursor: pointer; }
 	</style>
 </head>
 <body>
+
 <div class="container">
 	<div class="card">
-		<div class="card-header">
-			<h2 style="margin:0;">博物館情報の編集</h2>
-			<span style="color:#888; font-size:0.9em;">ID: <?= $museum['id'] ?> / コード: <?= $museum['m_code'] ?></span>
+		<div class="header-flex">
+			<h2>博物館情報の編集</h2>
+			<div style="font-size:0.8rem; color:#888;">ID: <?= $museum['id'] ?> / Code: <?= $museum['m_code'] ?></div>
 		</div>
 
-		<?php if ($error_msg): ?><div class="alert"><?= htmlspecialchars($error_msg) ?></div><?php endif; ?>
-
-		<form method="POST">
+		<form method="POST" enctype="multipart/form-data">
+			
+			<div class="section-title">基本情報</div>
 			<div class="form-grid">
 				<div class="form-group">
-					<label>博物館名<span class="req">*</span></label>
-					<input type="text" id="name_ja" name="name_ja" value="<?= htmlspecialchars($museum['name_ja']) ?>" onblur="checkNameStatus()" required>
-					<p id="name-hint" class="info-text">重複しない名称を入力してください。</p>
+					<label>博物館名</label>
+					<input type="text" name="name_ja" value="<?= htmlspecialchars($museum['name_ja']) ?>" required>
 				</div>
-				<div class="form-group"><label>博物館名（かな）<span class="req">*</span></label><input type="text" name="name_kana" value="<?= htmlspecialchars($museum['name_kana']) ?>" required></div>
-				
 				<div class="form-group">
-					<label>カテゴリ<span class="req">*</span></label>
-					<select name="category_id" required>
+					<label>かな名称</label>
+					<input type="text" name="name_kana" value="<?= htmlspecialchars($museum['name_kana']) ?>" required>
+				</div>
+				<div class="form-group">
+					<label>カテゴリ</label>
+					<select name="category_id">
 						<?php foreach ($categories as $cat): ?>
-							<option value="<?= $cat['id'] ?>" <?= ($museum['category_id'] == $cat['id']) ? 'selected' : '' ?>><?= htmlspecialchars($cat['name']) ?></option>
+							<option value="<?= $cat['id'] ?>" <?= $museum['category_id']==$cat['id']?'selected':'' ?>><?= htmlspecialchars($cat['name']) ?></option>
 						<?php endforeach; ?>
 					</select>
 				</div>
-
 				<div class="form-group">
-					<label>筆頭管理者メールアドレス<span class="req">*</span></label>
-					<input type="email" id="email" name="email" value="<?= htmlspecialchars($museum['email']) ?>" onblur="checkUserStatus()" required>
-					<p id="email-hint" class="info-text">変更すると、新しい担当者に管理権限が移ります。</p>
+					<label>管理者メールアドレス (筆頭)</label>
+					<input type="text" value="<?= htmlspecialchars($museum['email'] ?: '未設定') ?>" disabled style="background:#f9f9f9;">
 				</div>
+			</div>
 
-				<div id="password-group" class="form-group" style="display:none;">
-					<label>新規管理者用初期パスワード<span class="req">*</span></label>
-					<input type="password" id="password" name="password">
-					<p class="info-text">既存ユーザーの場合は不要です。</p>
+			<div class="section-title">所在地・連絡先</div>
+			<div class="form-group" style="margin-bottom:15px;">
+				<label>住所</label>
+				<div style="display:flex; gap:10px;">
+					<input type="text" name="address" id="address" value="<?= htmlspecialchars($museum['address']) ?>">
+					<button type="button" class="btn-sm" onclick="getCoords()">座標取得</button>
 				</div>
-
-				<div class="form-group full-width"><label>所在地</label><input type="text" name="address" value="<?= htmlspecialchars($museum['address']) ?>"></div>
+			</div>
+			<div class="form-grid">
 				<div class="form-group"><label>電話番号</label><input type="text" name="phone_number" value="<?= htmlspecialchars($museum['phone_number']) ?>"></div>
 				<div class="form-group"><label>公式サイトURL</label><input type="url" name="website_url" value="<?= htmlspecialchars($museum['website_url']) ?>"></div>
-				
-				<div class="form-group full-width">
-					<label>公開ステータス<span class="req">*</span></label>
-					<div style="margin-top:10px;">
-						<label style="font-weight:normal; margin-right:20px; display:inline-flex; align-items:center;"><input type="radio" name="is_active" value="1" <?= $museum['is_active'] ? 'checked' : '' ?> style="width:auto; margin-right:8px;"> 公開</label>
-						<label style="font-weight:normal; display:inline-flex; align-items:center;"><input type="radio" name="is_active" value="0" <?= !$museum['is_active'] ? 'checked' : '' ?> style="width:auto; margin-right:8px;"> 非公開</label>
+			</div>
+
+			<!-- ★新規追加：広告・収益プラン設定 -->
+			<div class="section-title">広告・収益プラン設定</div>
+			<div class="ad-config-box">
+				<div class="form-group" style="margin-bottom:20px;">
+					<label>広告表示モード</label>
+					<select name="ad_type" id="ad_type" onchange="toggleAdFields()">
+						<option value="0" <?= $museum['ad_type']==0?'selected':'' ?>>標準（AdSense：自動収益）</option>
+						<option value="1" <?= $museum['ad_type']==1?'selected':'' ?>>システム共通広告（SV指定）</option>
+						<option value="2" <?= $museum['ad_type']==2?'selected':'' ?>>自館PR広告（博物館独自）</option>
+						<option value="9" <?= $museum['ad_type']==9?'selected':'' ?>>非表示（有料プラン・公立博物館用）</option>
+					</select>
+				</div>
+
+				<div id="custom_ad_fields" style="<?= $museum['ad_type']==2 ? '' : 'display:none;' ?>">
+					<div class="form-group" style="margin-bottom:15px;">
+						<label>自館PR用バナー画像</label>
+						<?php if($museum['ad_custom_image']): ?>
+							<img src="../<?= htmlspecialchars($museum['ad_custom_image']) ?>" style="width:200px; display:block; margin-bottom:10px; border-radius:5px;">
+						<?php endif; ?>
+						<input type="file" name="ad_image" accept="image/*">
+					</div>
+					<div class="form-group">
+						<label>バナーのリンク先URL</label>
+						<input type="url" name="ad_custom_link" value="<?= htmlspecialchars($museum['ad_custom_link']) ?>" placeholder="https://...">
 					</div>
 				</div>
-				<div class="form-group full-width"><label>備考</label><textarea name="notes" rows="3"><?= htmlspecialchars($museum['notes']) ?></textarea></div>
+			</div>
+
+			<div class="section-title">ステータス・備考</div>
+			<div class="form-group">
+				<label>公開ステータス</label>
+				<select name="is_active">
+					<option value="1" <?= $museum['is_active']==1?'selected':'' ?>>公開中</option>
+					<option value="0" <?= $museum['is_active']==0?'selected':'' ?>>非公開 (準備中メッセージを表示)</option>
+				</select>
+			</div>
+			<div class="form-group" style="margin-top:20px;">
+				<label>内部向け備考メモ</label>
+				<textarea name="notes" rows="4"><?= htmlspecialchars($museum['notes']) ?></textarea>
 			</div>
 
 			<div class="btn-group">
 				<a href="index.php" class="btn btn-outline">キャンセル</a>
-				<button type="submit" id="submit-btn" class="btn btn-primary">変更を保存する</button>
+				<button type="submit" class="btn btn-primary">変更を保存する</button>
 			</div>
 		</form>
 	</div>
 </div>
 
 <script>
-let currentId = <?= $id ?>;
-let currentEmail = "<?= htmlspecialchars($museum['email']) ?>";
-
-async function checkNameStatus() {
-	const name = document.getElementById('name_ja').value;
-	const hint = document.getElementById('name-hint');
-	const btn = document.getElementById('submit-btn');
-	if (!name) return;
-	const response = await fetch(`check_name.php?name=${encodeURIComponent(name)}&exclude_id=${currentId}`);
-	const data = await response.json();
-	if (data.exists) {
-		hint.innerHTML = "<b style='color:#d00;'>【重複】他の博物館で使用されています。</b>";
-		btn.disabled = true;
-	} else {
-		hint.innerHTML = "<span style='color:#26b396;'>使用可能です。</span>";
-		btn.disabled = false;
-	}
+function toggleAdFields() {
+	const type = document.getElementById('ad_type').value;
+	const fields = document.getElementById('custom_ad_fields');
+	fields.style.display = (type == '2') ? 'block' : 'none';
 }
 
-async function checkUserStatus() {
-	const email = document.getElementById('email').value;
-	const emailHint = document.getElementById('email-hint');
-	const pwGroup = document.getElementById('password-group');
-	const pwInput = document.getElementById('password');
-
-	if (!email.includes('@')) return;
-	if (email === currentEmail) {
-		emailHint.innerHTML = "現在の筆頭管理者です。";
-		pwGroup.style.display = "none";
-		pwInput.required = false;
-		return;
-	}
-
-	const response = await fetch('check_email.php?email=' + encodeURIComponent(email));
-	const data = await response.json();
-	if (data.exists) {
-		emailHint.innerHTML = "<b style='color:#e67e22;'>【既存ユーザー】</b> 権限をこの人に移譲します。";
-		pwGroup.style.display = "none";
-		pwInput.required = false;
-	} else {
-		emailHint.innerHTML = "<b style='color:#26b396;'>【新規ユーザー】</b> アカウントを新規作成して移譲します。";
-		pwGroup.style.display = "block";
-		pwInput.required = true;
-	}
+async function getCoords() {
+    let addr = document.getElementById('address').value;
+    if(!addr) return;
+    addr = addr.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/[－ー]/g, '-');
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`);
+    const data = await res.json();
+    if(data.length > 0) { 
+        alert("座標が確認されました（内部的に緯度経度を保持します）"); 
+    } else { 
+        alert("住所から座標が見つかりませんでした。"); 
+    }
 }
 </script>
 </body>
