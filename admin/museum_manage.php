@@ -1,4 +1,5 @@
 <?php
+// /admin/museum_manage.php
 require_once('../common/db_inc.php');
 session_start();
 
@@ -50,16 +51,12 @@ $my_role = $permission['role'];
 	<style>
 		:root { --primary-color: #26b396; --bg-color: #f4f7f7; --border-color: #e9ecef; }
 		body { font-family: sans-serif; background-color: var(--bg-color); margin: 0; color: #333; }
-		
 		header { background: white; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
 		.btn-back { text-decoration: none; color: #666; font-size: 0.9rem; }
-		
 		.container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
 		.museum-header { margin-bottom: 30px; }
 		.museum-header h1 { margin: 0; font-size: 1.8rem; color: #333; }
 		.role-indicator { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; background: #eee; color: #666; font-weight: bold; }
-
-		/* メッセージアラート */
 		.alert { background: #e6fff0; color: #1e7e34; padding: 15px 20px; border-radius: 12px; margin-bottom: 30px; border: 1px solid #c3e6cb; font-weight: bold; font-size: 0.9rem; }
 
 		/* メニュータイル */
@@ -77,20 +74,15 @@ $my_role = $permission['role'];
 
 <header>
 	<a href="index.php" class="btn-back">← 博物館一覧に戻る</a>
-	<div class="user-info" style="font-size:0.85rem; color:#888;">
-		ログイン中: <?= htmlspecialchars($_SESSION['admin_name'] ?? '管理者') ?>
-	</div>
+	<div class="user-info" style="font-size:0.85rem; color:#888;">ログイン中: <?= htmlspecialchars($_SESSION['admin_name'] ?? '管理者') ?></div>
 </header>
 
 <div class="container">
 	<div class="museum-header">
 		<h1><?= htmlspecialchars($permission['name_ja']) ?></h1>
-		<div class="role-indicator">
-			あなたの権限: <?= $my_role === 'admin' ? '博物館管理者' : 'データ編集者' ?>
-		</div>
+		<div class="role-indicator">あなたの権限: <?= $my_role === 'admin' ? '博物館管理者' : 'データ編集者' ?></div>
 	</div>
 
-	<!-- 修正メッセージの表示エリア -->
 	<?php if (isset($_GET['msg'])): ?>
 		<div class="alert">
 			<?php
@@ -108,7 +100,13 @@ $my_role = $permission['role'];
 
 		<a href="exhibits.php?id=<?= $museum_id ?>" class="menu-item">
 			<h3>展示物の管理</h3>
-			<p>展示品の登録、編集、公開・非公開の切り替えを行います。</p>
+			<p>展示品の登録、編集、公開・非公開の切り替え、QRコード印刷を行います。</p>
+		</a>
+
+		<!-- ★追加：館内掲示用QRコードのボタン -->
+		<a href="museum_qr_print.php?m_id=<?= $museum_id ?>" class="menu-item" target="_blank">
+			<h3>館内掲示用QRコード</h3>
+			<p>入り口や受付に掲示する、この博物館専用トップページのQRコードを発行します。</p>
 		</a>
 
 		<?php if ($my_role === 'admin'): ?>
