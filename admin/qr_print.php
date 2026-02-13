@@ -94,7 +94,8 @@ $base_url = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP
 
 		/* Mサイズ (2列×5行 = 10枚) ※標準 */
 		.layout-m { grid-template-columns: repeat(2, 1fr); gap: 5mm; }
-		.layout-m .qr-card { height: 55mm; }
+		/*.layout-m .qr-card { height: 55mm; }*/
+		.layout-m .qr-card { height: 60mm; }
 		.layout-m .mgr-zone { height: 15mm; padding: 10px; }
 		.layout-m .mgr-title { font-size: 13px; }
 
@@ -152,7 +153,7 @@ $base_url = (empty($_SERVER['HTTPS']) ? 'http://' : 'https://') . $_SERVER['HTTP
  */
 function generateQRs(size) {
 	const canvases = document.querySelectorAll('.qr-code-canvas');
-	let qrSize = 140; // Default M
+	let qrSize = 120; // Default M
 	if (size === 's') qrSize = 90;
 	if (size === 'l') qrSize = 350;
 

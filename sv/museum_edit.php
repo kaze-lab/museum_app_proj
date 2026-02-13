@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	$phone_number = $_POST['phone_number'];
 	$website_url = $_POST['website_url'];
 	$is_active = (int)$_POST['is_active'];
-	$ad_type = (int)$_POST['ad_type'];
+	$ad_type = (int)$_POST['ad_type']; // UIからは0が選択できなくなるが、既存の0はそのまま受け付ける
 	$ad_custom_link = trim($_POST['ad_custom_link']);
 	$notes = $_POST['notes'];
 
@@ -50,10 +50,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		try {
 			$pdo->beginTransaction();
 
-			// 自館広告画像の処理（アップロードされた場合）
+			// 自館広告画像の処理
 			$ad_custom_image = $museum['ad_custom_image'];
 			if (!empty($_FILES['ad_image']['name'])) {
 				$dir = "../uploads/museums/{$id}/ads/";
+				// ※saveImageAsWebP関数はcommon/db_inc.php等に定義されている前提
 				$new_ad_path = saveImageAsWebP($_FILES['ad_image'], $dir, 'ad_');
 				if ($new_ad_path) {
 					if ($ad_custom_image && file_exists("../" . $ad_custom_image)) unlink("../" . $ad_custom_image);
@@ -61,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				}
 			}
 
-			// 更新SQL
 			$sql_u = "UPDATE museums SET 
 						name_ja = ?, name_kana = ?, category_id = ?, 
 						address = ?, phone_number = ?, website_url = ?, 
@@ -103,16 +103,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		.section-title { font-size: 1rem; font-weight: bold; color: var(--primary-color); background: #f8f9fa; padding: 10px 15px; border-left: 5px solid var(--primary-color); margin: 30px 0 20px; }
 		
 		.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-		.full-width { grid-column: 1 / -1; }
-		
 		label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 0.9rem; color: #555; }
 		input, select, textarea { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 1rem; }
 		
 		/* 広告設定エリア */
-		.ad-config-box { background: #f0f4f8; padding: 20px; border-radius: 12px; border: 1px solid #d1d9e6; }
+		.ad-config-box { background: #f0f4f8; padding: 25px; border-radius: 12px; border: 1px solid #d1d9e6; }
+		.guide-text { font-size: 0.8rem; color: #e67e22; margin-bottom: 15px; line-height: 1.5; }
+		
+		.preview-img { 
+			width: 100%; max-width: 400px; aspect-ratio: 3 / 1; object-fit: cover; 
+			background: #f8f9fa; border: 1px dashed #ccc; border-radius: 10px; 
+			margin-bottom: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; 
+		}
+		.preview-img img { width: 100%; height: 100%; object-fit: cover; }
 
 		.btn-group { display: flex; gap: 15px; margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-color); }
-		.btn { text-decoration: none; padding: 12px 35px; border-radius: 30px; font-weight: bold; cursor: pointer; border: 1px solid; font-size: 1rem; }
+		.btn { text-decoration: none; padding: 12px 35px; border-radius: 30px; font-weight: bold; cursor: pointer; border: 1px solid; font-size: 1rem; text-align: center; }
 		.btn-primary { background: var(--primary-color); color: white; border-color: var(--primary-color); }
 		.btn-outline { background: white; color: #666; border-color: #ddd; }
 		
@@ -132,14 +138,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			
 			<div class="section-title">基本情報</div>
 			<div class="form-grid">
-				<div class="form-group">
-					<label>博物館名</label>
-					<input type="text" name="name_ja" value="<?= htmlspecialchars($museum['name_ja']) ?>" required>
-				</div>
-				<div class="form-group">
-					<label>かな名称</label>
-					<input type="text" name="name_kana" value="<?= htmlspecialchars($museum['name_kana']) ?>" required>
-				</div>
+				<div class="form-group"><label>博物館名</label><input type="text" name="name_ja" value="<?= htmlspecialchars($museum['name_ja']) ?>" required></div>
+				<div class="form-group"><label>かな名称</label><input type="text" name="name_kana" value="<?= htmlspecialchars($museum['name_kana']) ?>" required></div>
 				<div class="form-group">
 					<label>カテゴリ</label>
 					<select name="category_id">
@@ -148,32 +148,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 						<?php endforeach; ?>
 					</select>
 				</div>
-				<div class="form-group">
-					<label>管理者メールアドレス (筆頭)</label>
-					<input type="text" value="<?= htmlspecialchars($museum['email'] ?: '未設定') ?>" disabled style="background:#f9f9f9;">
-				</div>
+				<div class="form-group"><label>管理者メールアドレス</label><input type="text" value="<?= htmlspecialchars($museum['email'] ?: '未設定') ?>" disabled style="background:#f9f9f9;"></div>
 			</div>
 
 			<div class="section-title">所在地・連絡先</div>
 			<div class="form-group" style="margin-bottom:15px;">
 				<label>住所</label>
-				<div style="display:flex; gap:10px;">
-					<input type="text" name="address" id="address" value="<?= htmlspecialchars($museum['address']) ?>">
-					<button type="button" class="btn-sm" onclick="getCoords()">座標取得</button>
-				</div>
-			</div>
-			<div class="form-grid">
-				<div class="form-group"><label>電話番号</label><input type="text" name="phone_number" value="<?= htmlspecialchars($museum['phone_number']) ?>"></div>
-				<div class="form-group"><label>公式サイトURL</label><input type="url" name="website_url" value="<?= htmlspecialchars($museum['website_url']) ?>"></div>
+				<input type="text" name="address" id="address" value="<?= htmlspecialchars($museum['address']) ?>">
 			</div>
 
-			<!-- ★新規追加：広告・収益プラン設定 -->
+			<!-- 広告・収益プラン設定 -->
 			<div class="section-title">広告・収益プラン設定</div>
 			<div class="ad-config-box">
 				<div class="form-group" style="margin-bottom:20px;">
 					<label>広告表示モード</label>
 					<select name="ad_type" id="ad_type" onchange="toggleAdFields()">
-						<option value="0" <?= $museum['ad_type']==0?'selected':'' ?>>標準（AdSense：自動収益）</option>
+						<!-- ad_type=0 (AdSense) をUIから削除 -->
 						<option value="1" <?= $museum['ad_type']==1?'selected':'' ?>>システム共通広告（SV指定）</option>
 						<option value="2" <?= $museum['ad_type']==2?'selected':'' ?>>自館PR広告（博物館独自）</option>
 						<option value="9" <?= $museum['ad_type']==9?'selected':'' ?>>非表示（有料プラン・公立博物館用）</option>
@@ -181,27 +171,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				</div>
 
 				<div id="custom_ad_fields" style="<?= $museum['ad_type']==2 ? '' : 'display:none;' ?>">
-					<div class="form-group" style="margin-bottom:15px;">
-						<label>自館PR用バナー画像</label>
+					<label>自館PR用バナー画像</label>
+					<div class="preview-img">
 						<?php if($museum['ad_custom_image']): ?>
-							<img src="../<?= htmlspecialchars($museum['ad_custom_image']) ?>" style="width:200px; display:block; margin-bottom:10px; border-radius:5px;">
+							<img id="ad_prev" src="../<?= htmlspecialchars($museum['ad_custom_image']) ?>">
+						<?php else: ?>
+							<img id="ad_prev" style="display:none;">
+							<span id="ad_placeholder" style="color:#ccc;">画像未選択</span>
 						<?php endif; ?>
-						<input type="file" name="ad_image" accept="image/*">
 					</div>
-					<div class="form-group">
-						<label>バナーのリンク先URL</label>
-						<input type="url" name="ad_custom_link" value="<?= htmlspecialchars($museum['ad_custom_link']) ?>" placeholder="https://...">
+					
+					<div class="guide-text">
+						<b>【画像ルール】</b> 推奨サイズ: 1200×400px (3:1)<br>
+						※アプリ上では強制的に 3:1 の比率で中央切り抜き表示されます。
 					</div>
+					<input type="file" name="ad_image" accept="image/*" onchange="previewAd(this)" style="margin-bottom:20px;">
+
+					<label>バナーのリンク先URL</label>
+					<input type="url" name="ad_custom_link" value="<?= htmlspecialchars($museum['ad_custom_link']) ?>" placeholder="https://...">
 				</div>
 			</div>
 
 			<div class="section-title">ステータス・備考</div>
-			<div class="form-group">
-				<label>公開ステータス</label>
-				<select name="is_active">
-					<option value="1" <?= $museum['is_active']==1?'selected':'' ?>>公開中</option>
-					<option value="0" <?= $museum['is_active']==0?'selected':'' ?>>非公開 (準備中メッセージを表示)</option>
-				</select>
+			<div class="form-grid">
+				<div class="form-group">
+					<label>公開ステータス</label>
+					<select name="is_active">
+						<option value="1" <?= $museum['is_active']==1?'selected':'' ?>>公開中</option>
+						<option value="0" <?= $museum['is_active']==0?'selected':'' ?>>非公開 (準備中メッセージを表示)</option>
+					</select>
+				</div>
 			</div>
 			<div class="form-group" style="margin-top:20px;">
 				<label>内部向け備考メモ</label>
@@ -219,20 +218,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script>
 function toggleAdFields() {
 	const type = document.getElementById('ad_type').value;
-	const fields = document.getElementById('custom_ad_fields');
-	fields.style.display = (type == '2') ? 'block' : 'none';
+	const customFields = document.getElementById('custom_ad_fields');
+	if (customFields) {
+		customFields.style.display = (type == '2') ? 'block' : 'none';
+	}
 }
 
-async function getCoords() {
-    let addr = document.getElementById('address').value;
-    if(!addr) return;
-    addr = addr.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/[－ー]/g, '-');
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`);
-    const data = await res.json();
-    if(data.length > 0) { 
-        alert("座標が確認されました（内部的に緯度経度を保持します）"); 
-    } else { 
-        alert("住所から座標が見つかりませんでした。"); 
+function previewAd(obj) {
+    if (obj.files && obj.files[0]) {
+        const fileReader = new FileReader();
+        fileReader.onload = (function() {
+            const img = document.getElementById('ad_prev');
+            img.src = fileReader.result;
+            img.style.display = 'block';
+            const ph = document.getElementById('ad_placeholder');
+            if(ph) ph.style.display = 'none';
+        });
+        fileReader.readAsDataURL(obj.files[0]);
     }
 }
 </script>
