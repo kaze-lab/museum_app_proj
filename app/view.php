@@ -1,7 +1,47 @@
 <?php
 // /app/view.php
 require_once('../common/db_inc.php');
+require_once('../common/copyright_config.php'); // ★ 著作権表示の共通化ファイルを追加 ★
 session_start();
+
+// ★ 言語設定と多言語辞書の定義を追加 ★
+$lang = $_SESSION['app_lang'] ?? 'ja';
+$labels = [
+    'ja' => [
+        'back_to_index' => '博物館一覧へ',
+        'search_placeholder' => '展示物を検索...',
+        'audio_guide' => '音声ガイド',
+        'more' => 'もっと見る',
+        'no_exhibits' => '展示物が見つかりませんでした。',
+        'preparing_title' => '只今、展示準備中',
+        'preparing_body' => '公開まで今しばらくお待ちください。',
+        'close' => '閉じる',
+        'qr_scan' => 'QRスキャン'
+    ],
+    'en' => [
+        'back_to_index' => 'Museum List',
+        'search_placeholder' => 'Search exhibits...',
+        'audio_guide' => 'Audio Guide',
+        'more' => 'More',
+        'no_exhibits' => 'No exhibits found.',
+        'preparing_title' => 'Coming Soon',
+        'preparing_body' => 'Please wait until the exhibits are open to the public.',
+        'close' => 'Close',
+        'qr_scan' => 'QR Scan'
+    ],
+    'zh' => [
+        'back_to_index' => '博物馆列表',
+        'search_placeholder' => '搜索展品...',
+        'audio_guide' => '语音导览',
+        'more' => '更多',
+        'no_exhibits' => '未找到展品。',
+        'preparing_title' => '敬请期待',
+        'preparing_body' => '请稍候，等待展览向公众开放。',
+        'close' => '关闭',
+        'qr_scan' => 'QR扫描'
+    ]
+];
+$L = $labels[$lang];
 
 // 1. パラメータ取得
 $m_code = $_GET['m'] ?? '';
@@ -27,6 +67,12 @@ $museum = $stmt->fetch();
 
 if (!$museum) { echo "博物館が見つかりません。"; exit; }
 
+// モーダル用多言語化
+$m_name_col = "name_" . ($_SESSION['app_lang'] ?? 'ja'); // 言語設定がセッションになければ 'ja'
+$m_desc_col = "description_" . ($_SESSION['app_lang'] ?? 'ja');
+$disp_m_name = $museum[$m_name_col] ?? $museum['name_ja']; // Null合体演算子でフォールバック
+$disp_m_desc = $museum[$m_desc_col] ?? $museum['description_ja'];
+
 // 4. 展示物リスト取得
 $ex_sql = "SELECT * FROM exhibits WHERE museum_id = ? AND status = 'public' AND deleted_at IS NULL";
 $ex_params = [$museum['id']];
@@ -51,9 +97,21 @@ if ($ad_type === 1) { // SV指定広告
 }
 // ad_type=9 (非表示) および ad_type=0 (旧AdSense) の場合は$ad_htmlは空のままとなる
 
+// フッターの著作権表示用システム設定を取得
+$footer_company_system_name = '';
+try {
+    $settings_stmt = $pdo->query("SELECT copyright_display FROM system_settings WHERE id = 1");
+    $settings_data = $settings_stmt->fetch();
+    if ($settings_data && !empty($settings_data['copyright_display'])) {
+        $footer_company_system_name = htmlspecialchars($settings_data['copyright_display']);
+    }
+} catch (Exception $e) {
+    error_log("Failed to fetch system settings for footer: " . $e->getMessage());
+}
+
 ?>
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="<?= $lang ?>"> <!-- ★ lang属性を修正 ★ -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -63,12 +121,40 @@ if ($ad_type === 1) { // SV指定広告
         :root { --primary: #26b396; --bg: #f8f9fa; --text: #333; }
         body { font-family: sans-serif; margin: 0; background: var(--bg); color: var(--text); padding-bottom: 120px; }
         
-        .header { background: white; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .page-title { font-size: 1.1rem; font-weight: bold; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex: 1; text-align: center; }
-        .info-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--primary); padding: 0; width: 40px; text-align: right; }
-        .header-spacer { width: 40px; }
+        /* ヘッダーコンテナのスタイル修正 (2段表示対応) */
+        .header { background: white; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05); padding: 15px 20px 10px; /* 上段と下段の間隔を考慮 */ }
+        
+        .header-top-row { display: flex; justify-content: center; align-items: center; margin-bottom: 5px; }
+        .page-title { font-size: 1.5rem; /* 大きく表示 */ font-weight: bold; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; color: var(--text); margin: 0; flex: 1; }
 
-        .search-area { padding: 10px 15px; background: #fff; border-bottom: 1px solid #eee; position: sticky; top: 56px; z-index: 90; }
+        .header-bottom-row { display: flex; align-items: center; justify-content: space-between; }
+        
+        /* ヘッダー左上の「博物館一覧へ」リンクスタイル */
+        .back-to-index-link { 
+            color: var(--primary); text-decoration: none; font-size: 0.9rem; font-weight: bold; 
+            display: flex; align-items: center; gap: 5px; /* アイコンとテキストの間隔 */
+            white-space: nowrap; /* テキストが折り返さないように */
+            flex-shrink: 0; /* 固定幅を持たせる */
+            padding: 5px 10px; /* クリックしやすいように */
+        }
+        .back-to-index-link .arrow { font-size: 1.2rem; }
+
+        /* iボタンのスタイル修正 (枠削除) */
+        .info-btn { 
+            background: none; border: none; font-size: 1.5rem; cursor: pointer; 
+            color: var(--primary); padding: 0; width: 40px; height: 40px; /* 正方形に */
+            display: flex; align-items: center; justify-content: center;
+            outline: none; /* 黒い枠を削除 */
+            box-shadow: none; /* 影も削除 */
+            flex-shrink: 0;
+            text-decoration: none; /* aタグになった場合のスタイル */
+        }
+        /* aタグになった場合のホバー・アクティブスタイル調整 */
+        .info-btn:hover { opacity: 0.8; }
+        .info-btn:active { transform: scale(0.95); }
+
+
+        .search-area { padding: 10px 15px; background: #fff; border-bottom: 1px solid #eee; position: sticky; top: 90px; /* ヘッダー2段になったため調整 */ z-index: 90; }
         .search-box { display: flex; background: #f0f2f5; border-radius: 8px; padding: 8px 12px; align-items: center; }
         .search-input { border: none; outline: none; width: 100%; font-size: 1rem; background: transparent; margin-left: 10px; }
 
@@ -82,7 +168,7 @@ if ($ad_type === 1) { // SV指定広告
         .btn-more { display: block; width: 100%; padding: 12px; background: #e0e0e0; color: #555; text-align: center; border: none; border-radius: 25px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .hidden-item { display: none; }
 
-        /* ★ 修正：広告エリアの比率を3:1に固定 */
+        /* 広告エリアの比率を3:1に固定 */
         .ad-area { margin: 40px 15px 20px; text-align: center; }
         .ad-box { display: block; width: 100%; border-radius: 10px; overflow: hidden; position: relative; text-decoration: none; border: 1px solid #eee; background: white; }
         .ad-box img { 
@@ -91,12 +177,29 @@ if ($ad_type === 1) { // SV指定広告
             object-fit: cover;   /* 枠に合わせて切り抜き */
             display: block; 
         }
-        /* ad-sense スタイリングは広告表示しないため不要だが、念のため残す */
         .ad-sense { aspect-ratio: 3/1; display: flex; align-items: center; justify-content: center; background: #eee; color: #aaa; font-size: 0.8rem; border: 1px dashed #ccc; }
         .ad-tag { position: absolute; top: 0; right: 0; background: rgba(0,0,0,0.4); color: white; font-size: 0.6rem; padding: 2px 6px; }
 
-        .footer-link { text-align: center; font-size: 0.7rem; margin-top: 30px; opacity: 0.5; }
-        .footer-link a { color: #aaa; text-decoration: none; }
+        /* フッター関連スタイル (index.phpと共通) */
+        .footer-area {
+            margin-top: 50px; /* リストエリアとの間隔 */
+            padding: 20px 15px;
+            /* background: #fff; */ 
+            border-top: 1px solid #eee; 
+            text-align: center;
+            color: #888;
+            font-size: 0.8rem;
+            /* box-shadow: none; */ 
+        }
+        .footer-main-info {
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .footer-copyright {
+            margin-bottom: 5px;
+            color: #aaa; /* 著作権表示は少し控えめに */
+        }
 
         .preparing { text-align: center; padding: 80px 20px; color: #888; }
         .prep-icon { font-size: 3.5rem; display: block; margin-bottom: 15px; }
@@ -125,36 +228,54 @@ if ($ad_type === 1) { // SV指定広告
 <body>
 
 <header class="header">
-    <div class="header-spacer"></div>
-    <div class="page-title"><?= htmlspecialchars($museum['name_ja']) ?></div>
-    <button class="info-btn" onclick="toggleModal()">ℹ️</button>
+    <div class="header-top-row">
+        <div class="page-title"><?= htmlspecialchars($museum['name_ja']) ?></div>
+    </div>
+    <div class="header-bottom-row">
+        <!-- ★ 博物館一覧へのリンクを多言語化 ★ -->
+        <a href="index.php" class="back-to-index-link">
+            <span class="arrow">←</span> <?= $L['back_to_index'] ?>
+        </a>
+        <!-- ★ iボタンをaタグに置き換え、リンク先をmuseum_info.phpに設定 ★ -->
+        <a href="museum_info.php?m=<?= htmlspecialchars($m_code) ?>" class="info-btn">ℹ️</a>
+    </div>
 </header>
 
 <?php if ($museum['is_active'] == 1): ?>
     
-    <div class="search-area"><form method="GET" class="search-box"><input type="hidden" name="m" value="<?= $m_code ?>"><span>🔍</span><input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="search-input" placeholder="展示物を検索..."></form></div>
+    <div class="search-area"><form method="GET" class="search-box"><input type="hidden" name="m" value="<?= $m_code ?>"><span>🔍</span><input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="search-input" placeholder="<?= $L['search_placeholder'] ?>"></form></div>
     
     <div class="list-area">
         <?php if (count($exhibits) > 0): ?>
             <?php $count = 0; foreach ($exhibits as $ex): $count++; $cls = ($count > 20) ? 'hidden-item' : ''; ?>
             <a href="exhibit.php?m=<?= $m_code ?>&e=<?= $ex['e_code'] ?>" class="ex-card <?= $cls ?>">
                 <img src="../<?= $ex['image_path'] ?: 'img/no-image.webp' ?>" class="ex-thumb" loading="lazy">
-                <div class="ex-body"><div class="ex-title"><?= htmlspecialchars($ex['title_ja']) ?></div><div class="ex-meta">🎧 音声ガイド</div></div>
+                <div class="ex-body"><div class="ex-title"><?= htmlspecialchars($ex['title_ja']) ?></div><div class="ex-meta">🎧 <?= $L['audio_guide'] ?></div></div>
                 <span style="color:#ddd;">❯</span>
             </a>
             <?php endforeach; ?>
-            <?php if (count($exhibits) > 20): ?><button id="btn-more" class="btn-more" onclick="showMore()">もっと見る (+<?= count($exhibits) - 20 ?>件)</button><?php endif; ?>
-        <?php else: ?><div style="text-align:center; padding:60px 20px; color:#aaa;">展示物が見つかりませんでした。</div><?php endif; ?>
+            <?php if (count($exhibits) > 20): ?><button id="btn-more" class="btn-more" onclick="showMore()"><?= $L['more'] ?> (+<?= count($exhibits) - 20 ?>件)</button><?php endif; ?>
+        <?php else: ?><div style="text-align:center; padding:60px 20px; color:#aaa;"><?= $L['no_exhibits'] ?></div><?php endif; ?>
     </div>
 
     <!-- 広告エリア（最下段・3:1固定） -->
     <?php if($ad_html): ?><div class="ad-area"><?= $ad_html ?></div><?php endif; ?>
 
 <?php else: ?>
-    <div class="preparing"><span class="prep-icon">🏛️</span><h3>只今、展示準備中</h3><p>公開まで今しばらくお待ちください。</p></div>
+    <div class="preparing"><span class="prep-icon">🏛️</span><h3><?= $L['preparing_title'] ?></h3><p><?= $L['preparing_body'] ?></p></div>
 <?php endif; ?>
 
-<div class="footer-link"><a href="index.php">Powered by Museum Guide</a></div>
+<!-- フッターエリア -->
+<div class="footer-area">
+	<?php if ($footer_company_system_name): ?>
+		<div class="footer-main-info">powered by <?= $footer_company_system_name ?></div>
+	<?php endif; ?>
+	
+	<!-- 貴社著作権表示（固定） -->
+	<div class="footer-copyright">
+		<?= YOUR_COPYRIGHT_TEXT ?>
+	</div>
+</div>
 
 <!-- 統一QRボタン -->
 <button class="qr-floating-btn" onclick="startScan()">
@@ -165,19 +286,19 @@ if ($ad_type === 1) { // SV指定広告
         <rect x="7" y="14" width="3" height="3"></rect>
         <rect x="14" y="14" width="3" height="3"></rect>
     </svg>
-    <span>QRスキャン</span>
+    <span><?= $L['qr_scan'] ?></span>
 </button>
 
-<!-- モーダル -->
+<!-- モーダル (この段階ではHTMLは残し、iボタンからの呼び出しを解除) -->
 <div id="info-modal" class="modal-overlay" onclick="if(event.target === this) toggleModal()">
     <div class="modal-content">
         <span onclick="toggleModal()" class="modal-close">×</span>
         <img src="../<?= $museum['main_image'] ?: 'img/no-image.webp' ?>" class="modal-hero">
         <div class="modal-body">
-            <h2 style="margin-top:0; font-size:1.3rem;"><?= htmlspecialchars($museum['name_ja']) ?></h2>
-            <div class="desc-text"><?= htmlspecialchars($museum['description_ja']) ?></div>
+            <h2 style="margin-top:0; font-size:1.3rem;"><?= htmlspecialchars($disp_m_name) ?></h2>
+            <div class="desc-text"><?= htmlspecialchars($disp_m_desc) ?></div>
             <div class="info-row">📍 <?= htmlspecialchars($museum['address']) ?></div>
-            <button onclick="toggleModal()" style="width:100%; margin-top:20px; padding:12px; border:1px solid #ddd; background:#f9f9f9; border-radius:10px; font-weight:bold; color:#666;">閉じる</button>
+            <button onclick="toggleModal()" style="width:100%; margin-top:20px; padding:12px; border:1px solid #ddd; background:#f9f9f9; border-radius:10px; font-weight:bold; color:#666;"><?= $L['close'] ?></button>
         </div>
     </div>
 </div>
@@ -189,19 +310,37 @@ if ($ad_type === 1) { // SV指定広告
 </div>
 
 <script>
+// toggleModal() 関数は info-modal がHTMLに残っているため、この段階では残します。
 function toggleModal() { const m = document.getElementById('info-modal'); m.style.display = (m.style.display === 'flex') ? 'none' : 'flex'; }
 function showMore() { document.querySelectorAll('.hidden-item').forEach(el => el.classList.remove('hidden-item')); document.getElementById('btn-more').style.display = 'none'; }
 let v = document.getElementById('v'), sc = false;
 function startScan() {
     document.getElementById('scanner-ui').style.display = 'flex';
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(s => { v.srcObject = s; v.play(); sc = true; tick(); })
-    .catch(err => { alert("カメラを起動できません"); stopScan(); });
+    // QRスキャン機能改善のためのgetUserMedia設定
+    navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 }, // 理想の解像度 (720p)
+            height: { ideal: 720 },
+            advanced: [{ focusMode: 'continuous' }] // 連続オートフォーカスを要求
+        } 
+    }).then(s => { 
+        v.srcObject = s; 
+        v.play(); 
+        sc = true; 
+        tick(); 
+    })
+    .catch(err => { 
+        console.error("Camera access error:", err);
+        alert("カメラを起動できませんでした。許可されているかご確認ください。");
+        stopScan(); 
+    });
 }
 function stopScan() { sc = false; if(v.srcObject) v.srcObject.getTracks().forEach(t => t.stop()); document.getElementById('scanner-ui').style.display = 'none'; }
 function tick() {
     if(v.readyState === v.HAVE_ENOUGH_DATA && sc) {
         const canvas = document.createElement('canvas'); canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-        const ctx = canvas.getContext('2d'); ctx.drawImage(v, 0, 0);
+        const ctx = canvas.getContext('2d'); ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
         const code = jsQR(ctx.getImageData(0,0,canvas.width,canvas.height).data, canvas.width, canvas.height);
         if(code && code.data.includes('.php')) { window.location.href = code.data; return; }
     }
