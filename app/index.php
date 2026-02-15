@@ -1,11 +1,29 @@
 <?php
 // /app/index.php
 require_once('../common/db_inc.php');
+require_once('../common/copyright_config.php'); // ★ 著作権表示の共通化ファイルを追加 ★
 session_start();
 
 // 1. システム設定取得
-$stmt_s = $pdo->query("SELECT * FROM system_settings WHERE id = 1");
+// ★ SELECT文を修正 (header_system_name, copyright_display を取得) ★
+$stmt_s = $pdo->query("SELECT header_system_name, copyright_display, deepl_api_key, deepl_api_url FROM system_settings WHERE id = 1");
 $settings = $stmt_s->fetch();
+
+// 読み込めなかった場合の初期値
+if (!$settings) {
+	$settings = [
+		'header_system_name' => '博物館ガイド', // デフォルト値
+		'copyright_display' => 'Museum Guide', // デフォルト値
+		'deepl_api_key' => '',
+		'deepl_api_url' => 'https://api-free.deepl.com/v2/translate'
+	];
+}
+
+// ヘッダーに表示するシステム名
+$display_header_system_name = htmlspecialchars($settings['header_system_name']);
+// フッターに表示する会社・システム名
+$display_footer_company_system_name = htmlspecialchars($settings['copyright_display']);
+
 
 // 2. 検索条件の取得
 $q = $_GET['q'] ?? '';
@@ -24,20 +42,25 @@ $sql .= " ORDER BY m.id DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $museums = $stmt->fetchAll();
+
+// ★ もっと見る機能のための初期表示件数 ★
+$initial_display_count = 20;
 ?>
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-	<title><?= htmlspecialchars($settings['app_name'] ?? '博物館ガイド') ?></title>
+	<!-- ★ title タグの app_name 表示を修正 ★ -->
+	<title><?= $display_header_system_name ?></title>
 	<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 	<style>
 		:root { --primary: #26b396; --bg: #f4f7f6; --text: #333; }
 		body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; padding-bottom: 120px; }
 		
 		header { text-align: center; margin-bottom: 20px; }
-		.app-name { font-size: 1.1rem; font-weight: bold; color: var(--primary); margin: 0; }
+		/* app-name の表示を修正 */
+		.app-name-fixed { font-size: 1.1rem; font-weight: bold; color: var(--primary); margin: 0; } /* 固定表示用クラス */
 
 		.search-area { margin-bottom: 25px; }
 		.search-area input {
@@ -73,11 +96,46 @@ $museums = $stmt->fetchAll();
 		#scanner-ui { position: fixed; inset: 0; background: #000; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
 		#v-frame { width: 280px; height: 280px; border: 2px solid var(--primary); border-radius: 30px; overflow: hidden; }
 		video { width: 100%; height: 100%; object-fit: cover; }
+
+		/* ★ フッター関連スタイル (背景・影を削除し、シンプルなテキスト表示に) ★ */
+        .footer-area {
+            margin-top: 50px; /* リストエリアとの間隔 */
+            padding: 20px 15px;
+            /* background: #fff; */ /* 削除 */
+            border-top: 1px solid #eee; /* 必要であれば残すか調整 */
+            text-align: center;
+            color: #888;
+            font-size: 0.8rem;
+            /* box-shadow: none; */ /* 削除 */
+        }
+        .footer-main-info {
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .footer-copyright {
+            margin-bottom: 5px;
+            color: #aaa; /* 著作権表示は少し控えめに */
+        }
+        /* フッターのリンクが必要なければ削除 */
+        /* .footer-links { margin-top: 10px; } */
+        /* .footer-links a { color: #aaa; text-decoration: none; margin: 0 5px; } */
+
+		/* ★ もっと見る機能用CSS ★ */
+		.btn-more { 
+			display: block; width: 100%; padding: 12px; background: #e0e0e0; 
+			color: #555; text-align: center; border: none; border-radius: 25px; 
+			font-weight: bold; cursor: pointer; margin-top: 10px; 
+		}
+        .hidden-item { display: none; }
 	</style>
 </head>
 <body>
 
-<header><h1 class="app-name"><?= htmlspecialchars($settings['app_name'] ?? '博物館ガイド') ?></h1></header>
+<header>
+	<!-- ヘッダーのシステム名表示を修正 -->
+	<h1 class="app-name-fixed"><?= $display_header_system_name ?></h1>
+</header>
 
 <form method="GET" class="search-area">
 	<input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="キーワードで博物館を探す">
@@ -86,8 +144,8 @@ $museums = $stmt->fetchAll();
 <div class="section-title">MUSEUM LIST / 博物館一覧</div>
 
 <div class="museum-list">
-	<?php foreach ($museums as $m): ?>
-	<a href="view.php?m=<?= $m['m_code'] ?>" class="m-card <?= $m['is_active'] ? '' : 'is-inactive' ?>">
+	<?php $count = 0; foreach ($museums as $m): $count++; $cls = ($count > $initial_display_count) ? 'hidden-item' : ''; ?>
+	<a href="view.php?m=<?= $m['m_code'] ?>" class="m-card <?= $cls ?> <?= $m['is_active'] ? '' : 'is-inactive' ?>">
 		<img src="../<?= $m['main_image'] ?: 'img/no-image.webp' ?>" class="m-thumb">
 		<div class="m-info">
 			<div class="m-cat"><?= htmlspecialchars($m['category_name']) ?></div>
@@ -97,6 +155,7 @@ $museums = $stmt->fetchAll();
 		<span style="color:#ddd;">❯</span>
 	</a>
 	<?php endforeach; ?>
+	<?php if (count($museums) > $initial_display_count): ?><button id="btn-more" class="btn-more" onclick="showMore()">もっと見る (+<?= count($museums) - $initial_display_count ?>件)</button><?php endif; ?>
 </div>
 
 <!-- QRボタン (画像に合わせたデザイン) -->
@@ -113,21 +172,67 @@ $museums = $stmt->fetchAll();
 
 <div id="scanner-ui">
 	<div id="v-frame"><video id="v" playsinline></video></div>
-	<button onclick="stopScan()" style="margin-top:30px; background:none; border:1px solid #555; color:#888; padding:12px 40px; border-radius:30px;">閉じる</button>
+	<p style="color:white; margin-top:25px; font-weight:bold;">QRコードを枠内にかざしてください</p>
+	<button onclick="stopScan()" style="margin-top:30px; background:none; border:1px solid #999; color:#ccc; padding:12px 40px; border-radius:30px;">閉じる</button>
 </div>
 
+<!-- ★★★ フッターエリア 追加 ★★★ -->
+<div class="footer-area">
+	<?php if ($display_footer_company_system_name): ?>
+		<div class="footer-main-info">powered by <?= $display_footer_company_system_name ?></div>
+	<?php endif; ?>
+	
+	<!-- 貴社著作権表示（固定） -->
+	<div class="footer-copyright">
+		<?= YOUR_COPYRIGHT_TEXT ?>
+	</div>
+	
+	<!-- 必要であれば、ここに追加のリンクなども配置可能 -->
+	<!-- <div class="footer-links">
+		<a href="#">利用規約</a>
+	</div> -->
+</div>
+<!-- ★★★ フッターエリア 追加ここまで ★★★ -->
+
 <script>
+// もっと見る機能用JS
+function showMore() {
+    document.querySelectorAll('.hidden-item').forEach(el => el.classList.remove('hidden-item'));
+    document.getElementById('btn-more').style.display = 'none';
+}
+
 let v = document.getElementById('v'), sc = false;
 function startScan() {
 	document.getElementById('scanner-ui').style.display = 'flex';
-	navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(s => { v.srcObject = s; v.play(); sc = true; tick(); })
-	.catch(err => { alert("カメラの使用を許可してください"); stopScan(); });
+	// QRスキャン機能改善のためのgetUserMedia設定
+	navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 }, // 理想の解像度 (720p)
+            height: { ideal: 720 },
+            advanced: [{ focusMode: 'continuous' }] // 連続オートフォーカスを要求
+        } 
+    }).then(s => { 
+        v.srcObject = s; 
+        v.play(); 
+        sc = true; 
+        tick(); 
+    })
+	.catch(err => { 
+        console.error("Camera access error:", err); // エラー詳細をコンソールに出力
+        alert("カメラを起動できませんでした。許可されているかご確認ください。"); // ユーザー向けメッセージを具体的に
+        stopScan(); 
+    });
 }
 function stopScan() { sc = false; if(v.srcObject) v.srcObject.getTracks().forEach(t => t.stop()); document.getElementById('scanner-ui').style.display = 'none'; }
 function tick() {
 	if(v.readyState === v.HAVE_ENOUGH_DATA && sc) {
-		const canvas = document.createElement('canvas'); canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-		const ctx = canvas.getContext('2d'); ctx.drawImage(v, 0, 0);
+		const canvas = document.createElement('canvas'); 
+        canvas.width = v.videoWidth; 
+        canvas.height = v.videoHeight;
+		const ctx = canvas.getContext('2d'); 
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+
 		const code = jsQR(ctx.getImageData(0,0,canvas.width,canvas.height).data, canvas.width, canvas.height);
 		if(code && code.data.includes('.php')) { window.location.href = code.data; return; }
 	}
